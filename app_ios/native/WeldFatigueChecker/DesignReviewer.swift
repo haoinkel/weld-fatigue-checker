@@ -141,7 +141,7 @@ enum DesignReviewer {
                 ImprovementSuggestion(action: "改为连续焊缝，或控制间距 g/h ≤ 25", raisesFatTo: nil, effort: "中(改图)")
             ]),
         Rule(id: "R16", severity: "low", title: "焊脚尺寸可能不足",
-            condition: { false },   // 需 legSize/requiredLeg 字段，由 UI 补充；保留占位
+            condition: { _ in false },   // 需 legSize/requiredLeg 字段，由 UI 补充；保留占位
             finding: "实际焊脚尺寸小于所需喉厚对应焊脚，静强度与疲劳喉部均不足。",
             suggestions: [
                 ImprovementSuggestion(action: "加大焊脚至满足喉厚 a≥0.7×所需焊脚，并重新评估 FAT", raisesFatTo: nil, effort: "中(工艺)")

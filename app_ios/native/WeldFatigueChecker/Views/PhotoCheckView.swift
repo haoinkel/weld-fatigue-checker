@@ -1,6 +1,7 @@
 // Views/PhotoCheckView.swift
 import SwiftUI
 import PhotosUI
+import ARKit
 
 struct PhotoCheckView: View {
     @EnvironmentObject var store: Store
@@ -196,7 +197,7 @@ struct PhotoCheckView: View {
     private func loadPhoto(from item: PhotosPickerItem?) {
         guard let item else { return }
         item.loadTransferable(type: Data.self) { result in
-            if case .success(let data) = result, let ui = UIImage(data: data) {
+            if case .success(let data) = result, let d = data, let ui = UIImage(data: d) {
                 DispatchQueue.main.async {
                     store.photo = ui
                     calMode = false; calPts = []; annoMode = false
@@ -365,7 +366,7 @@ struct AnnotationPhotoView: View {
                     }
                     .stroke(Color.blue, lineWidth: 2)
                     let px = hypot((b.x - a.x) * image.size.width, (b.y - a.y) * image.size.height)
-                    let lab = pxPerMm.map { "≈ \(px / $0, specifier: "%.1f") mm" } ?? "\(Int(px)) px"
+                    let lab = pxPerMm.map { String(format: "≈ %.1f mm", Double(px) / $0) } ?? "\(Int(px)) px"
                     Text(lab)
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(.white)

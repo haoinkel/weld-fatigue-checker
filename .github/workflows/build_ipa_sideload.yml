@@ -22,8 +22,10 @@ jobs:
       - name: Select latest installed Xcode
         run: |
           set -e
-          XCODE_APP=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -n 1)
+          XCODE_APP=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -n 1)
+          if [ -z "$XCODE_APP" ]; then XCODE_APP=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -n 1); fi
           echo "Using Xcode at: $XCODE_APP"
+          xcodebuild -version
           sudo xcode-select -s "$XCODE_APP/Contents/Developer"
 
       - name: Build unsigned IPA

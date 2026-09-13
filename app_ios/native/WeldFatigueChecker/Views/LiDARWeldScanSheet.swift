@@ -14,6 +14,7 @@
 
 import SwiftUI
 import ARKit
+import RealityKit
 import AVFoundation
 import CoreVideo
 

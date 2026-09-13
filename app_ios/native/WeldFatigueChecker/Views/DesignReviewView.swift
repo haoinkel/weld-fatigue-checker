@@ -1,6 +1,11 @@
 // Views/DesignReviewView.swift
 import SwiftUI
 
+// 把可选 Double 的 Binding 转成非可选 Binding（缺省 0），供 LabeledField 使用
+private func dblBinding(_ b: Binding<Double?>) -> Binding<Double> {
+    Binding<Double>(get: { b.wrappedValue ?? 0 }, set: { b.wrappedValue = $0 })
+}
+
 struct DesignReviewView: View {
     @EnvironmentObject var store: Store
     var body: some View {
@@ -25,7 +30,7 @@ struct DesignReviewView: View {
                     Toggle("荷载经焊缝传递", isOn: $store.design.loadCarrying)
                     Toggle("全熔透", isOn: $store.design.fullPenetration)
                     Toggle("打磨与母材齐平", isOn: $store.design.groundFlush)
-                    LabeledField("附件长度(mm)", value: $store.design.attachmentLengthMm ?? 0)
+                    LabeledField("附件长度(mm)", value: dblBinding($store.design.attachmentLengthMm))
                     LabeledField("板厚 t(mm)", value: $store.design.plateThicknessMm)
                     Toggle("梁端有切孔", isOn: $store.design.copeHole)
                     Toggle("位于拉应力区", isOn: $store.design.inTensionZone)
@@ -35,7 +40,7 @@ struct DesignReviewView: View {
                     Picker("盖板端部", selection: $store.design.coverTermination) {
                         Text("直角终止").tag("abrupt"); Text("斜面过渡").tag("taper")
                     }
-                    LabeledField("错边量 e(mm)", value: $store.design.misalignmentMm ?? 0)
+                    LabeledField("错边量 e(mm)", value: dblBinding($store.design.misalignmentMm))
                     Toggle("有引/收弧板", isOn: $store.design.runoffTabs)
                     Toggle("高周疲劳(>5e6)", isOn: $store.design.highCycle)
                 }

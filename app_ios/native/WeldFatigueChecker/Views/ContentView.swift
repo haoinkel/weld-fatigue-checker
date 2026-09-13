@@ -52,15 +52,4 @@ struct LoadsAndResultView: View {
     }
 }
 
-struct LabeledField: View {
-    let label: String
-    @Binding var value: Double
-    init(_ label: String, value: Binding<Double>) { self.label = label; self._value = value }
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.caption).foregroundColor(.secondary)
-            TextField(label, value: $value, format: .number).textFieldStyle(.roundedBorder)
-                .keyboardType(.decimalPad)
-        }
-    }
-}
+// 注：LabeledField 的定义统一放在 DesignReviewView.swift，本文件仅使用（模块级可见）。

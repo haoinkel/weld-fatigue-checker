@@ -33,7 +33,7 @@ enum ReportGenerator {
             }
             line("有效 FAT: \(Int(r.fatigue.effectiveFat))")
             line("应力幅 Δσ: \(Int(r.fatigue.deltaSigma)) MPa (γ_Mf=\(r.fatigue.gammaMf))")
-            line("允许/需求次数: \(fmt(r.fatigue.nAllowable)) / \(fmt(r.fatigue.nRequired))")
+            line("允许/需求次数: \(r.fatigue.nAllowable) / \(r.fatigue.nRequired)")
             line("利用率: \(String(format: "%.3f", r.fatigue.utilization)) （>1 不满足）")
             line("结论: \(r.fatigue.pass ? "满足" : "不满足")", 12, bold: true,
                  color: r.fatigue.pass ? .systemGreen : .systemRed)

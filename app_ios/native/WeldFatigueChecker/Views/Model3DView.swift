@@ -127,7 +127,7 @@ struct Model3DView: View {
 
     // MARK: - STEP / IGES（经 OCCT 桥接）
     private func loadSTEP(_ url: URL, _ err: inout String?) -> SCNNode? {
-        var mesh: OCCTMesh?
+        var mesh: UnsafeMutablePointer<OCCTMesh>?
         url.withUnsafeFileSystemRepresentation { ptr in
             guard let ptr else { return }
             mesh = occt_read_step(ptr)
@@ -136,7 +136,7 @@ struct Model3DView: View {
     }
 
     private func loadIGES(_ url: URL, _ err: inout String?) -> SCNNode? {
-        var mesh: OCCTMesh?
+        var mesh: UnsafeMutablePointer<OCCTMesh>?
         url.withUnsafeFileSystemRepresentation { ptr in
             guard let ptr else { return }
             mesh = occt_read_iges(ptr)
@@ -144,7 +144,7 @@ struct Model3DView: View {
         return finishOCCT(mesh, &err, ext: "IGES")
     }
 
-    private func finishOCCT(_ mesh: OCCTMesh?, _ err: inout String?, ext: String) -> SCNNode? {
+    private func finishOCCT(_ mesh: UnsafeMutablePointer<OCCTMesh>?, _ err: inout String?, ext: String) -> SCNNode? {
         guard let m = mesh else {
             err = "\(ext) 解析失败，或 OCCT 未启用。请先在 Mac 运行 build_occt_ios.sh 生成 Vendor/OCCT，再用 ./build.sh 重新编译（会自动开启 USE_OCCT）。"
             return nil
@@ -153,19 +153,19 @@ struct Model3DView: View {
         return geometryFromMesh(m)
     }
 
-    private func geometryFromMesh(_ m: OCCTMesh) -> SCNNode? {
-        let vCount = Int(m.vertexCount)
-        let iCount = Int(m.indexCount)
+    private func geometryFromMesh(_ m: UnsafeMutablePointer<OCCTMesh>) -> SCNNode? {
+        let vCount = Int(m.pointee.vertexCount)
+        let iCount = Int(m.pointee.indexCount)
         guard vCount > 0, iCount > 0 else { return nil }
-        let posData = Data(bytes: m.positions!, count: vCount * MemoryLayout<OCCTVec3f>.stride)
-        let normData = Data(bytes: m.normals!,   count: vCount * MemoryLayout<OCCTVec3f>.stride)
+        let posData = Data(bytes: m.pointee.positions!, count: vCount * MemoryLayout<OCCTVec3f>.stride)
+        let normData = Data(bytes: m.pointee.normals!,   count: vCount * MemoryLayout<OCCTVec3f>.stride)
         let posSrc = SCNGeometrySource(data: posData, semantic: .vertex, vectorCount: vCount,
             usesFloatComponents: true, componentsPerVector: 3, bytesPerComponent: MemoryLayout<Float>.stride,
             dataOffset: 0, dataStride: MemoryLayout<OCCTVec3f>.stride)
         let normSrc = SCNGeometrySource(data: normData, semantic: .normal, vectorCount: vCount,
             usesFloatComponents: true, componentsPerVector: 3, bytesPerComponent: MemoryLayout<Float>.stride,
             dataOffset: 0, dataStride: MemoryLayout<OCCTVec3f>.stride)
-        let idxData = Data(bytes: m.indices!, count: iCount * MemoryLayout<Int32>.stride)
+        let idxData = Data(bytes: m.pointee.indices!, count: iCount * MemoryLayout<Int32>.stride)
         let elem = SCNGeometryElement(data: idxData, primitiveType: .triangles, primitiveCount: iCount / 3,
             bytesPerIndex: MemoryLayout<Int32>.stride)
         let geo = SCNGeometry(sources: [posSrc, normSrc], elements: [elem])
