@@ -1,0 +1,57 @@
+{
+  "standard": "EN 1993-1-9:2005 (Eurocode 3 - Fatigue)",
+  "source_ocr": "EN1993-1-9_ocr.txt",
+  "note": "FAT = 2×10^6 次循环处的特征应力范围 Δσc (N/mm²)。本文件 FAT 值部分直接取自工作区 OCR（表8.1/8.2），部分取自通用焊接细节常识；凡‘verified_from_ocr’=false 的条目须以 PDF 原文或 GB 50017 对应细节校核后再用于工程判定。",
+  "sn_curve": {
+    "normal_stress": {
+      "m1": 3,
+      "knee_N": 5000000,
+      "ref_N": 2000000,
+      "cafl_factor": 0.737,
+      "cutoff_factor": 0.549,
+      "note": "法向应力：N≤5×10^6 时斜率 m=3；等幅疲劳极限 Δσ_D=0.737·Δσc；截止极限 Δσ_L=0.549·Δσc（10^8 次）。见 OCR 第616/630行。"
+    },
+    "shear_stress": {
+      "m": 5,
+      "ref_N": 2000000,
+      "cutoff_factor": 0.457,
+      "note": "剪应力：斜率 m=5；截止极限 Δτ_L=0.457·Δτc。见 OCR 第614/622行。"
+    }
+  },
+  "gamma_mf_default": 1.0,
+  "gamma_mf_note": "疲劳分项系数 γ_Mf，默认 1.0；各国国家附录可要求 1.15（详细评估）或 1.35（简化评估）。在 UI 中作为可配置参数。",
+  "detail_categories": [
+    {"id": "P1", "table": "8.1", "fat": 160, "stress_type": "normal", "name": "轧制/模压产品（元件1-3）", "verified_from_ocr": true, "source": "OCR~786", "note": "最高疲劳等级，需磨削消去锐边。"},
+    {"id": "P4", "table": "8.1", "fat": 125, "stress_type": "normal", "name": "机器气割并修整的板材（元件4,5）", "verified_from_ocr": true, "source": "OCR~807", "note": "切割面机加工/磨削消去粗糙点。"},
+    {"id": "P6", "table": "8.1", "fat": 100, "stress_type": "normal", "name": "轧制/压延产品（元件6,7）", "verified_from_ocr": true, "source": "OCR~818", "note": ""},
+    {"id": "B8", "table": "8.1", "fat": 112, "stress_type": "normal", "name": "预载高强度螺栓双面对称接头-毛截面（元件8）", "verified_from_ocr": true, "source": "OCR~833", "note": ""},
+    {"id": "B10", "table": "8.1", "fat": 90, "stress_type": "normal", "name": "预载注脂螺栓单面接头-毛截面（元件10）", "verified_from_ocr": true, "source": "OCR~850", "note": ""},
+    {"id": "B12", "table": "8.1", "fat": 80, "stress_type": "normal", "name": "装配螺栓单面接头-净截面（元件12）", "verified_from_ocr": true, "source": "OCR~875", "note": ""},
+    {"id": "B13", "table": "8.1", "fat": 50, "stress_type": "normal", "name": "非预载螺栓单/双面对称接头-净截面（元件13）", "verified_from_ocr": true, "source": "OCR~883", "note": ""},
+    {"id": "WS1", "table": "8.2", "fat": 125, "stress_type": "normal", "name": "双面自动对接/角焊缝，连续纵焊缝（元件1,2）", "verified_from_ocr": true, "source": "OCR~934", "note": "盖板端部须按表8.5 元件6/7 检查。"},
+    {"id": "WS3", "table": "8.2", "fat": 112, "stress_type": "normal", "name": "双面自动角焊/对焊含起止点（元件3,4）", "verified_from_ocr": true, "source": "OCR~946", "note": "有起止点则降级：元件4 用 100 类。"},
+    {"id": "WS5", "table": "8.2", "fat": 100, "stress_type": "normal", "name": "手工角焊/对焊（元件5,6）", "verified_from_ocr": true, "source": "OCR~951", "note": ""},
+    {"id": "WS8", "table": "8.2", "fat": 80, "stress_type": "normal", "name": "间断纵向角焊缝 g/h≤25（元件8）", "verified_from_ocr": true, "source": "OCR~968", "note": ""},
+    {"id": "WS9", "table": "8.2", "fat": 71, "stress_type": "normal", "name": "处理孔纵向对接焊缝（高度≤60mm，元件9）", "verified_from_ocr": true, "source": "OCR~976", "note": "基于翼缘法向应力 Δσc=71。"},
+    {"id": "WS10g", "table": "8.2", "fat": 125, "stress_type": "normal", "name": "纵向对接焊缝两面打磨与加载方向齐平+100%探伤（元件10）", "verified_from_ocr": true, "source": "OCR~981", "note": ""},
+    {"id": "WS10n", "table": "8.2", "fat": 112, "stress_type": "normal", "name": "纵向对接焊缝无磨削无起止点（元件10）", "verified_from_ocr": true, "source": "OCR~985", "note": ""},
+    {"id": "WS10s", "table": "8.2", "fat": 100, "stress_type": "normal", "name": "纵向对接焊缝有起止点（元件10）", "verified_from_ocr": true, "source": "OCR~987", "note": ""},
+    {"id": "WS11a", "table": "8.2", "fat": 140, "stress_type": "normal", "name": "空心型材无起止点自动纵缝焊 t≤12.5mm（元件11）", "verified_from_ocr": true, "source": "OCR~995", "note": ""},
+    {"id": "WS11b", "table": "8.2", "fat": 125, "stress_type": "normal", "name": "空心型材无起止点自动纵缝焊 t≥12.5mm（元件11）", "verified_from_ocr": true, "source": "OCR~1001", "note": ""},
+
+    {"id": "W_FILLET_TRANS_NLC", "table": "8.5/常识", "fat": 80, "stress_type": "normal", "name": "横向非承载角焊缝（附件，焊趾受拉）", "verified_from_ocr": false, "source": "通用焊接细节", "note": "最常用的横向角焊缝细节；焊趾打磨可提至 100/112/125。"},
+    {"id": "W_FILLET_TRANS_LC", "table": "8.5/常识", "fat": 80, "stress_type": "normal", "name": "横向承载角焊缝（十字接头，传力）", "verified_from_ocr": false, "source": "通用焊接细节", "note": "荷载通过焊缝传递。"},
+    {"id": "W_FILLET_LONG", "table": "8.5/常识", "fat": 71, "stress_type": "normal", "name": "纵向角焊缝（平行受力方向）", "verified_from_ocr": false, "source": "通用焊接细节", "note": "平行于应力方向的非承载角焊缝。"},
+    {"id": "W_BUTT_ASWELD", "table": "8.3/常识", "fat": 100, "stress_type": "normal", "name": "横向对接焊缝（焊态，外形良好）", "verified_from_ocr": false, "source": "通用焊接细节", "note": "全熔透；打磨齐平可提至 125。"},
+    {"id": "W_BUTT_GROUND", "table": "8.3/常识", "fat": 125, "stress_type": "normal", "name": "横向对接焊缝（打磨与母材齐平）", "verified_from_ocr": false, "source": "通用焊接细节", "note": "焊态 100，打磨齐平 125。"},
+    {"id": "W_COVER_END", "table": "8.5/常识", "fat": 80, "stress_type": "normal", "name": "盖板端部（横向）", "verified_from_ocr": false, "source": "通用焊接细节", "note": "部分规范取 63；以原文校核。"},
+    {"id": "W_STIFF_END", "table": "8.5/常识", "fat": 80, "stress_type": "normal", "name": "加劲肋端部（横向受拉）", "verified_from_ocr": false, "source": "通用焊接细节", "note": ""}
+  ],
+  "improvement_methods": [
+    {"method": "toe_grinding", "label": "焊趾打磨", "factor": 1.3, "max_fat": 125, "note": "磨削焊趾圆滑过渡；可提 FAT。"},
+    {"method": "tig_dressing", "label": "TIG 熔修（氩弧重熔）", "factor": 1.3, "max_fat": 125, "note": "焊趾 TIG 重熔改善。"},
+    {"method": "hammer_peening", "label": "锤击强化", "factor": 1.5, "max_fat": 125, "note": "焊趾锤击/针束锤击引入压应力。"},
+    {"method": "burr_grinding", "label": "旋转钢丝刷打磨", "factor": 1.3, "max_fat": 100, "note": "仅适度改善。"}
+  ],
+  "improvement_note": "改善系数乘到 Δσc 上得到提升后的 FAT；提升后 FAT 不得超过 max_fat 上限。具体系数与上限以 EN1993-1-9 第7.2/附录原文校核。"
+}

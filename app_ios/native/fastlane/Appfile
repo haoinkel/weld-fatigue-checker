@@ -1,0 +1,10 @@
+# fastlane Appfile
+# 这里的 app_identifier 必须与 App Store Connect 里建的 App 记录、以及
+# WeldFatigueChecker.xcodeproj 中的 PRODUCT_BUNDLE_IDENTIFIER 完全一致。
+app_identifier("com.yourorg.weldfatiguechecker")
+
+# Apple Developer Team ID（也通过 GitHub Secret TEAM_ID 注入，二选一）
+team_id(ENV["TEAM_ID"] || "YOUR_TEAM_ID")
+
+# App Store Connect 团队 ID（与 team_id 通常相同）
+itc_team_id(ENV["TEAM_ID"] || "YOUR_TEAM_ID")

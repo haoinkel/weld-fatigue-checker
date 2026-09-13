@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-page-node-id="CsRo3k9VtSsmAFH51uFBpG">
+<head data-page-node-id="EstN0nqZOXaLdQER1qKfxa">
+  <meta charset="utf-8" data-page-node-id="uxGXCeawoA48fkNtsgHEEb" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" data-page-node-id="QGrzQHlVbPibaQRl3IbELC" />
+  <meta name="theme-color" content="#0b3d91" data-page-node-id="CR6pQN0BY17x1aQPccoyY5" />
+  <meta name="apple-mobile-web-app-capable" content="yes" data-page-node-id="PWo7CSWT0SvNfbFcNa5oC8" />
+  <meta name="mobile-web-app-capable" content="yes" data-page-node-id="k9AAAEkYCIKWGFU61SzpdT" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" data-page-node-id="ULueQXFXnrlHdi6iA8Y0CR" />
+  <meta name="apple-mobile-web-app-title" content="焊缝疲劳检查" data-page-node-id="Og6QZ40BNBs5YVYLFDYUQb" />
+  <link rel="manifest" href="manifest.webmanifest" data-page-node-id="JIG4Dh5Bl6jHbhxdCS6GiU" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" data-page-node-id="ooc2ACp3tAmi57R83uLl52" />
+  <link rel="icon" href="icons/icon-192.png" data-page-node-id="eWQ2za5i23MxAt01rWQbxP" />
+  <link rel="stylesheet" href="styles.css" data-page-node-id="jV5uhFLFm9LL8uEm3J5PsY" />
+  <title>焊缝疲劳合规检查器</title>
+</head>
+<body data-page-node-id="HlgYUG4CmZk9UGpymEFlhr">
+  <header class="topbar" data-page-node-id="JEZCJOe97oldAD19UeerID">
+    <div class="brand" data-page-node-id="0le9xyQl3Ecwuk28veJCVR">
+      <span class="logo" data-page-node-id="FFNCqVGgHHHrFxL2qq5Cso">⚡</span>
+      <div data-page-node-id="olTxbVWmFLghrRbAF3UiYb">
+        <div class="t1" data-page-node-id="w8sJImzeF6NEg6BHYc3xY2">焊缝疲劳合规检查器</div>
+        <div class="t2" data-page-node-id="qjLL5ZaUfga80dhchDC5D6">EN 1993-1-9 · ISO 5817 · iPad 离线可用</div>
+      </div>
+    </div>
+    <span id="netState" class="pill pill-off" data-page-node-id="imfd8oJAYSFjYYkaY63JM4">离线就绪</span>
+  </header>
+
+  <main data-page-node-id="9a6bahaJXvjjjeDKwB2AKo">
+    <!-- ① 焊缝外观 -->
+    <section class="card" data-page-node-id="UmWD8HZwJnL8HN6gB7yDx3">
+      <h2 data-page-node-id="sECF1ZfSb9RTrV0HyEFskD">① 焊缝外观检查（iPad Pro 2025 现场拍照）</h2>
+      <p class="hint" data-page-node-id="cXnDzxxhb0Zo0XevcPnwn9">用 iPad 相机拍摄焊缝，点击照片可标出缺陷位置（自动加入下方缺陷清单）。<b>说明：</b>本机 LiDAR 由 ARKit 独占，Safari 中的 PWA 读不到深度，故此处用参照物标定；原生版可自动测距。</p>
+      <div class="row" data-page-node-id="Rp0V7zke06GfcHJLEt1SJ0">
+        <label class="btn file" data-page-node-id="VpbpvcilDmFANBs0zsBgk5">
+          拍摄 / 从相册选择
+          <input id="photo" type="file" accept="image/*" data-page-node-id="cfoh6EZ6eMAxvCQoadmBkL" />
+        </label>
+        <button id="autoBtn" class="btn ghost" type="button" data-page-node-id="autoBtnNode" disabled>🤖 自动识别缺陷</button>
+        <button id="clearPhoto" class="btn ghost" type="button" data-page-node-id="QOgg3m9EYMtFOAJagjTKW2">清除</button>
+      </div>
+      <canvas id="canvas" width="900" height="600" hidden data-page-node-id="ME4PzzX2YhxN1rdP8pxBEn"></canvas>
+
+      <div class="cal" data-page-node-id="calBox">
+        <div class="row">
+          <button id="calBtn" class="btn ghost sm" type="button">📏 标定比例</button>
+          <button id="measBtn" class="btn ghost sm" type="button">📐 测量缺陷</button>
+          <button id="annoToggle" class="btn ghost sm" type="button">🏷 标注：开</button>
+          <label class="callen">参照物实际长度(mm)
+            <input id="cal_len" type="number" value="85.6" step="0.1" data-page-node-id="calLen" />
+          </label>
+        </div>
+        <div id="calState" class="hint">未标定：在照片中放入直尺 / Aruco 码 / 银行卡(85.6mm)，点“标定比例”后点击两端。</div>
+        <div id="calScale" class="cal-scale" data-page-node-id="calScale"></div>
+      </div>
+
+      <div class="grid2" data-page-node-id="GGldlJvyUk1hPFZF7nVHFE">
+        <label data-page-node-id="99OAaGpH6EJeaszkBSahZy">接头类型
+          <select id="joint_type" data-page-node-id="owkGE0zEXZuXS1ClkVBh7T">
+            <option value="fillet" data-page-node-id="Q9umk5K8U1KbSgV3XHitq1">角焊缝</option>
+            <option value="butt" data-page-node-id="1eBwv4XeG30Gz12rh8MiL7">对接焊缝</option>
+            <option value="t_joint" data-page-node-id="lGdkEdc2WtLQXp4oo61ZPo">T 型接头</option>
+            <option value="cruciform" data-page-node-id="GhX04d1bfQJWyxvqjvyS45">十字接头</option>
+            <option value="corner" data-page-node-id="QO9CCqrZTOFSSjk0XmuXN5">角接</option>
+            <option value="lap" data-page-node-id="Kz7JLw4TZgOYlJ8cV69rGs">搭接</option>
+          </select>
+        </label>
+        <label data-page-node-id="ap0PgAG7lfVFJefvq35NPA">荷载方向
+          <select id="loading_direction" data-page-node-id="rcC8bIW3TzbQpDvUQACrRx">
+            <option value="transverse" data-page-node-id="QVEQLKmIL6QYF3YeQWdMKa">横向（垂直焊缝）</option>
+            <option value="longitudinal" data-page-node-id="yKCS7dpqe4LIF69SHQXfjp">纵向（平行焊缝）</option>
+          </select>
+        </label>
+        <label class="check" data-page-node-id="416MbO9yHKqyRtjPW7y1Ia"><input type="checkbox" id="load_carrying" data-page-node-id="P58Mp5faI6tQ3jwvXdWUNS" /> 荷载经焊缝传递（承载）</label>
+        <label class="check" data-page-node-id="pCw1JkMEfTqyDpy40BPYI1"><input type="checkbox" id="ground_flush" data-page-node-id="5uOtJGH8bVX5WCviqdmriI" /> 已打磨与母材齐平</label>
+        <label data-page-node-id="NXYpb7NqJP0o8iXPmCAA31">母材厚度 t (mm)
+          <input id="thickness" type="number" value="12" min="1" step="0.5" data-page-node-id="rkYZV8fVepy4BKXSCelx2F" />
+        </label>
+        <label data-page-node-id="PmEKRAXXDgO569ZIux2ejY">质量等级 (ISO 5817)
+          <select id="quality_level" data-page-node-id="A1JHn13GBsVKYj5jMoruEx">
+            <option value="B" data-page-node-id="uZk1f7M3FVQ7uVrUFvxN2h">B（最高）</option>
+            <option value="C" selected data-page-node-id="qxBl8WBzfGon4ITAj1qx2j">C（常规）</option>
+            <option value="D" data-page-node-id="KGPDQ0Gz0nAs0gZDTNvHUW">D（较低）</option>
+          </select>
+        </label>
+      </div>
+
+      <h3 data-page-node-id="3BnCmNAtlZDIRCiARmq34E">已识别/标注的缺陷</h3>
+      <div id="impList" class="imp-list" data-page-node-id="CvPKBkPupYD23zBeBF9XXu"></div>
+      <div id="recState" class="hint rec" data-page-node-id="recStateNode"></div>
+      <button id="addImp" class="btn ghost sm" type="button" data-page-node-id="LpwT6P8jcdu06NlErRwiUq">+ 手动添加缺陷</button>
+
+      <h3 data-page-node-id="KQCvlzwOnEbuFHRejhi0xe">已实施的焊趾改善措施</h3>
+      <div id="impvBox" class="checks" data-page-node-id="Bv4k0YQViWlXi8636GGPaB"></div>
+    </section>
+
+    <!-- ② 3D 设计审查 -->
+    <section class="card" data-page-node-id="NKiKC198akUUhwTcXZJwWr">
+      <h2 data-page-node-id="QA1kpGKVVCrWQezsqbKgEo">② 3D 设计合理性审查</h2>
+      <p class="hint" data-page-node-id="yEdzA0nXhkgmLeeCQDhXC6">填入从 3D 图/CAD/LiDAR 识别出的几何与传力属性，自动标出不合理细部并给改型建议。</p>
+      <div class="grid2" data-page-node-id="kEEy7TecY9qx8L5EE4W6Bg">
+        <label data-page-node-id="QrJ0p2OpKhKIKmhZnnjaqX">接头类型
+          <select id="d_joint_type" data-page-node-id="zAlHgcsh4FTEXJY1xssR6A">
+            <option value="cruciform" data-page-node-id="9B3V5BMHCTvBUbI0yGaXZ9">十字接头</option>
+            <option value="t_joint" data-page-node-id="V2G01Li8xbfm3GsHxENXF7">T 型接头</option>
+            <option value="butt" data-page-node-id="qT3WODeDZ5KtAHxYCgPBmB">对接</option>
+            <option value="fillet" data-page-node-id="q1Ck5ivP9sfmDeDnquDgtg">角接</option>
+            <option value="lap" data-page-node-id="qkQHABEUg8xNbMuSzIskWh">搭接</option>
+            <option value="corner" data-page-node-id="28sEK65h9Se54ODmFJtiBN">角接(edge)</option>
+          </select>
+        </label>
+        <label data-page-node-id="jOiWKRK6xV6PPEsnzyByNk">焊缝类型
+          <select id="d_weld_type" data-page-node-id="OWk1ckjzsL8mFSfuFONDDW">
+            <option value="fillet" data-page-node-id="r7XXUHoYnNCAgBYMAzEv0u">角焊缝</option>
+            <option value="butt" data-page-node-id="eGl8xx3jKBmtmpcRzOyQXy">对接</option>
+          </select>
+        </label>
+        <label data-page-node-id="3Gtom6gxZHyqRMVav59B31">荷载方向
+          <select id="d_loading_direction" data-page-node-id="696jpbA4Cf0e9C4t4UTr8f">
+            <option value="transverse" data-page-node-id="4y2SRKGeQY7SUJPTcTkDEx">横向</option>
+            <option value="longitudinal" data-page-node-id="U3MprtgUi87EuMyhdAFwoD">纵向</option>
+          </select>
+        </label>
+        <label class="check" data-page-node-id="ddrmTqvwkmYla56xrWFdDI"><input type="checkbox" id="d_load_carrying" data-page-node-id="MztRA7ueEitnTujrUjyXul" /> 荷载经焊缝传递</label>
+        <label class="check" data-page-node-id="HUfkfqonL3B7EhlGNF163M"><input type="checkbox" id="d_full_penetration" data-page-node-id="5JFaNtfaWZufp2kudDzSQr" /> 全熔透</label>
+        <label class="check" data-page-node-id="Np5avj4hW83lP9kzrGPWCV"><input type="checkbox" id="d_ground_flush" data-page-node-id="nyoHb3rwubpElxqmGN9rff" /> 打磨齐平</label>
+        <label data-page-node-id="BqQIice2ySaMRkYjm9FtNh">附件长度 (mm)
+          <input id="d_attachment_length_mm" type="number" value="60" min="0" step="1" data-page-node-id="eiUad0IunrBV8XVwcJjzzD" />
+        </label>
+        <label data-page-node-id="T8kc0euEAR8ws9DHSZPcnm">板厚 t (mm)
+          <input id="d_plate_thickness_mm" type="number" value="12" min="1" step="0.5" data-page-node-id="HzuI8kPsRRFx9N9MhD4E02" />
+        </label>
+        <label class="check" data-page-node-id="mrDESsPwQYjnI0xGTPHW4c"><input type="checkbox" id="d_cope_hole" data-page-node-id="BHIIkIejOEYzGP43D8apS9" /> 梁端有切孔</label>
+        <label class="check" data-page-node-id="iztYRlmetywxEyKuJcZ7HC"><input type="checkbox" id="d_in_tension_zone" checked data-page-node-id="pUb20GEj4tLCRnL1mc3bcq" /> 位于拉应力区</label>
+        <label data-page-node-id="iLyvAgXwKP1WipCDwGqXrD">加劲肋端部
+          <select id="d_stiffener_end" data-page-node-id="3rJk0rMkCyxtZOdwsz3lOi">
+            <option value="square" data-page-node-id="1Do0Hl98UfmiEA5PFDR4ms">方形</option>
+            <option value="radius" data-page-node-id="YtclIeyQ1Fz9bkwc7fWoYQ">圆弧</option>
+            <option value="taper" data-page-node-id="M2qYk1y5S5Xtq8BdaNSKY3">斜面</option>
+          </select>
+        </label>
+        <label data-page-node-id="fh1QOdSXwYHCV99dfw0eCV">盖板端部
+          <select id="d_cover_termination" data-page-node-id="YTBI6cU2W3zpnqSBcTDbm5">
+            <option value="abrupt" data-page-node-id="S1xnagrfWxMHivPHr6IfEw">直角终止</option>
+            <option value="taper" data-page-node-id="dHEY3es4Hb7QNCYmR6VlL0">斜面过渡</option>
+          </select>
+        </label>
+        <label data-page-node-id="Bo9f73RMJJikGG0FQCFyOL">错边量 e (mm)
+          <input id="d_misalignment_mm" type="number" value="0" min="0" step="0.5" data-page-node-id="7tuxU6d3Roq8NWBDjvwFda" />
+        </label>
+        <label class="check" data-page-node-id="FxesQ1im3i0vcks6Nks9g1"><input type="checkbox" id="d_runoff_tabs" data-page-node-id="bUQAmPlp7zLt8X5VRpMGO7" /> 有引/收弧板</label>
+        <label class="check" data-page-node-id="5cG1RTwAlF3jS2gxVFnalO"><input type="checkbox" id="d_high_cycle" data-page-node-id="C04SiqhbsPCxs4KcA3Qq2B" /> 高周疲劳(&gt;5e6)</label>
+      </div>
+    </section>
+
+    <!-- ②b 3D 模型导入与实物对比 -->
+    <section class="card" data-page-node-id="modelCard">
+      <h2 data-page-node-id="modelCardH">②b 3D 模型导入与实物对比</h2>
+      <p class="hint" data-page-node-id="modelHint">导入 CAD/3D 模型（<b>.step / .stp / .iges / .glb / .gltf / .obj / .stl</b>），与①拍摄的焊缝实物照片叠加 / 并排对比，核对“设计是否与实物一致”。STEP/IGES 由 OpenCascade(WASM) 在 iPad 端侧解析，<b>不上传任何服务器</b>。</p>
+      <div class="row" data-page-node-id="modelRow">
+        <label class="btn file" data-page-node-id="modelFileLabel">
+          导入 3D 模型
+          <input id="modelFile" type="file" accept=".step,.stp,.iges,.p21,.glb,.gltf,.obj,.stl,model/*" data-page-node-id="modelFileIn" />
+        </label>
+        <button id="openModel" class="btn primary" type="button" disabled data-page-node-id="openModelBtn">打开 3D 对比视图</button>
+      </div>
+      <div id="modelInfo" class="hint" data-page-node-id="modelInfo">尚未加载模型。</div>
+      <div class="row">
+        <button id="fillDesign" class="btn ghost sm" type="button" disabled data-page-node-id="fillDesignBtn">把模型尺寸填入设计表单</button>
+      </div>
+    </section>
+
+    <!-- ③ 荷载 -->
+    <section class="card" data-page-node-id="Ypp3PRIBKqQQUbFQ0epLl0">
+      <h2 data-page-node-id="LbaFtWUTkDsf9tMZYtB1Zt">③ 荷载参数（照片无法提供，须人工/仿真输入）</h2>
+      <label data-page-node-id="tgaUXOHHQv527x6RzvIl2R">判定依据
+        <select id="mode" data-page-node-id="0W9OZNMkzslaJEcsmemsWF">
+          <option value="both" selected data-page-node-id="le5uRNnvHIQDYkBuqt3qwf">综合：3D 定 FAT + 照片定缺陷</option>
+          <option value="photo" data-page-node-id="HcGcccEI3YzqoS6DraaX9D">仅照片：识别接头定 FAT + 缺陷</option>
+          <option value="design" data-page-node-id="lOEnvJkuBrzUurs08wDNJy">仅 3D 设计：审查细部合理性</option>
+        </select>
+      </label>
+      <div class="grid2" data-page-node-id="C7EszTBSIcEPMcFRjGF063">
+        <label data-page-node-id="vzlzEAFsTkJgKBR10NzKNL">应力幅 Δσ (MPa)
+          <input id="delta_sigma" type="number" value="70" min="0" step="1" data-page-node-id="WrkjKMflXzZHfGubtuEGCe" />
+        </label>
+        <label data-page-node-id="72DWPnUYgDPl5ATeMBGJ8e">需求循环次数 N
+          <input id="n_required" type="number" value="2000000" min="1" step="100000" data-page-node-id="5S9Cx02fOM0Ut8IbFkCBuU" />
+        </label>
+        <label data-page-node-id="y3C0QscFmQoWiGAfafMKUQ">疲劳分项系数 γ_Mf
+          <select id="gamma_mf" data-page-node-id="gmN1mplyrjtAChFV3jRQt8">
+            <option value="1.0" data-page-node-id="fSZFjZVhHXI5PYdlGnIbBB">1.0（默认）</option>
+            <option value="1.15" data-page-node-id="uWUKXRIdxRZPl9lEJeE3zK">1.15（详细评估）</option>
+            <option value="1.35" data-page-node-id="gVF2TTeOdSYnYt3GyV54NE">1.35（简化评估）</option>
+          </select>
+        </label>
+      </div>
+      <div class="row" data-page-node-id="z2Y4Q8Cc2l7NqFxC3iqDRU">
+        <button id="calc" class="btn primary" type="button" data-page-node-id="Hjcu5aoJHONUv1ui0gjoHW">计算评估</button>
+        <button id="report" class="btn ghost" type="button" disabled data-page-node-id="fkZHgVf7FCFzcM4WF5OHDZ">导出报告(PDF)</button>
+        <button id="copy" class="btn ghost" type="button" disabled data-page-node-id="ODkvXp1v8bqBfBnsGU82tZ">复制 JSON</button>
+      </div>
+    </section>
+
+    <!-- ④ 标准包管理（开放接口：可增补/升级其他标准） -->
+    <section class="card" data-page-node-id="packCard">
+      <h2>④ 标准包管理（开放接口 · 可增补/升级）</h2>
+      <p class="hint">
+        程序已内置 <b>EN 1993-1-9:2005</b>（疲劳 FAT/S-N）与 <b>ISO 5817:2023</b>（表面缺陷验收）两个标准包，随程序打包、离线可用。
+        后续补充 <b>GB 50017、IIW-2259、AWS D1.1、BS 7608、DNV-RP-C203、JSSC</b> 等标准时，
+        只需准备一个符合 schema 的 <code>.pack.json</code> 文件在此导入即可立即生效 —— <b>不改代码、不重新安装、可反复升级</b>。
+      </p>
+      <div class="grid2">
+        <label>疲劳标准（决定 FAT / S-N）
+          <select id="std_fatigue" data-page-node-id="stdFatigue"></select>
+        </label>
+        <label>验收标准（决定表面缺陷限值）
+          <select id="std_acceptance" data-page-node-id="stdAccept"></select>
+        </label>
+      </div>
+      <div class="row">
+        <label class="btn file">
+          导入标准包 (.pack.json)
+          <input id="packFile" type="file" accept=".json,application/json" data-page-node-id="packFileIn" />
+        </label>
+        <button id="packTemplate" class="btn ghost sm" type="button">下载空白模板</button>
+        <button id="packExport" class="btn ghost sm" type="button">导出我已导入的标准</button>
+      </div>
+      <div id="packMsg" class="hint" data-page-node-id="packMsg"></div>
+      <div id="packList" data-page-node-id="packList"></div>
+      <details>
+        <summary class="sum">标准包 JSON 字段说明（给写标准的人看）</summary>
+        <div id="packSchemaNote" class="hint"></div>
+      </details>
+    </section>
+
+    <!-- ⑤ 标准库（随程序打包，离线可用） -->
+    <section class="card" data-page-node-id="stdCard">
+      <h2>⑤ 标准库（已封装于本程序，离线可用）</h2>
+      <p class="hint">下表为<b>当前启用</b>标准包的全部条目，数据已随程序打包进本机，完全离线运行，不联网、不回传。</p>
+      <details open>
+        <summary class="sum">展开查看已封装标准内容</summary>
+        <div id="stdLib"></div>
+      </details>
+    </section>
+
+    <!-- 结果 -->
+    <section id="result" class="card result" hidden data-page-node-id="4GPrQGP0VmgzJI7ONwyk0M"></section>
+  </main>
+
+  <!-- 报告模态（应用内显示，绕开 iPad 被忽略的 window.print） -->
+  <div id="reportModal" class="modal" hidden data-page-node-id="reportModal">
+    <div class="modal-card">
+      <div class="modal-bar">
+        <strong>焊缝疲劳合规检查报告</strong>
+        <div class="row">
+          <button id="rptDownload" class="btn ghost sm" type="button">下载 HTML</button>
+          <button id="rptCopy" class="btn ghost sm" type="button">复制文本</button>
+          <button id="rptPrint" class="btn ghost sm" type="button">打印 / 存 PDF</button>
+          <button id="rptClose" class="btn primary sm" type="button">关闭</button>
+        </div>
+      </div>
+      <div id="reportBody" class="report-body"></div>
+    </div>
+  </div>
+
+  <!-- 3D 对比视图模态 -->
+  <div id="modelModal" class="modal" hidden data-page-node-id="modelModal">
+    <div class="modal-card wide">
+      <div class="modal-bar">
+        <strong>3D 模型对比视图</strong>
+        <div class="row">
+          <label class="check"><input type="checkbox" id="splitChk" data-page-node-id="splitChk" /> 并排(照片｜模型)</label>
+          <label class="check">照片透明度
+            <input type="range" id="photoOpacity" min="0" max="1" step="0.05" value="0.5" style="width:90px" data-page-node-id="photoOpacity" />
+          </label>
+          <button id="modelClose" class="btn primary sm" type="button">关闭</button>
+        </div>
+      </div>
+      <div id="modelStage" class="model-stage">
+        <canvas id="modelCanvas"></canvas>
+        <img id="modelPhoto" class="model-photo" alt="焊缝实物照片" hidden data-page-node-id="modelPhoto" />
+      </div>
+      <div id="modelStatus" class="hint" data-page-node-id="modelStatus"></div>
+    </div>
+  </div>
+
+  <footer class="disclaimer" data-page-node-id="PBMg5FOiJDiOPdzsxAXhGv">
+    ⚠ 辅助判定工具，非认证检测；结论须由具备资质人员依据适用规范复核。
+  </footer>
+
+  <!-- 3D 渲染依赖：importmap 必须在模块脚本之前；occt-import-js 提供全局 occtimportjs() -->
+  <script type="importmap">
+    { "imports": { "three": "./vendor/three.module.js" } }
+  </script>
+  <script src="vendor/occt-import-js.js"></script>
+  <script type="module" src="js/three_viewer.js"></script>
+
+  <script src="js/knowledge.js"></script>
+  <script src="js/packs.js"></script>
+  <script src="js/standard_registry.js"></script>
+  <script src="js/engine.js"></script>
+  <script src="js/design_rules.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    // 注册 Service Worker（离线运行的前提）
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('./sw.js').then(function (reg) {
+          console.log('[PWA] SW registered, scope=', reg.scope);
+        }).catch(function (err) {
+          console.warn('[PWA] SW failed:', err);
+        });
+      });
+    }
+  </script>
+</body>
+</html>

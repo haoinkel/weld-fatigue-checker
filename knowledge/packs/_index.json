@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "active": {
+    "fatigue": "en1993-1-9",
+    "acceptance": "iso5817"
+  },
+  "packs": [
+    {
+      "pack_id": "en1993-1-9",
+      "kind": "fatigue",
+      "code": "EN 1993-1-9:2005",
+      "title": "钢结构设计 第1-9部分：疲劳",
+      "region": "EU",
+      "version": "2005",
+      "verified": true,
+      "file": "en1993_1_9.pack.json"
+    },
+    {
+      "pack_id": "iso5817",
+      "kind": "acceptance",
+      "code": "ISO 5817:2023",
+      "title": "焊接 钢、镍及镍合金熔焊焊缝缺陷的质量等级",
+      "region": "INT",
+      "version": "2023",
+      "verified": false,
+      "file": "iso5817.pack.json"
+    }
+  ]
+}

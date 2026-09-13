@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-page-node-id="XfWDEaJ9xfxUxJg8FT1CNG">
+<head data-page-node-id="1Qi7QWr1TZhSn7c6Vuhmy4">
+<meta charset="UTF-8" data-page-node-id="wzUFsenJzAN4CCZP2mO0wV" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="jYBmKhNZ7VX25SIAXKSBhz" />
+<title>焊缝疲劳合规检查器 · iPad 操作指引</title>
+<style>
+  :root{
+    --bg:#f5f7fa; --card:#ffffff; --ink:#1f2933; --sub:#5b6b7b;
+    --blue:#2274e5; --orange:#e8862b; --green:#2e9e5b; --line:#e3e8ef;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif;
+    line-height:1.6}
+  .wrap{max-width:920px;margin:0 auto;padding:28px 18px 60px}
+  header{background:linear-gradient(135deg,var(--blue),#4f9bff);color:#fff;
+    border-radius:18px;padding:26px 28px;box-shadow:0 8px 24px rgba(34,116,229,.25)}
+  header h1{margin:0 0 6px;font-size:24px}
+  header p{margin:0;opacity:.92;font-size:14px}
+  .path-toggle{display:flex;gap:10px;margin:22px 0 6px;flex-wrap:wrap}
+  .tag{display:inline-block;padding:4px 12px;border-radius:999px;font-size:13px;font-weight:600}
+  .tag.a{background:rgba(34,116,229,.12);color:var(--blue)}
+  .tag.b{background:rgba(232,134,43,.14);color:var(--orange)}
+  section{background:var(--card);border:1px solid var(--line);border-radius:16px;
+    padding:22px 24px;margin:18px 0;box-shadow:0 4px 14px rgba(20,40,80,.05)}
+  h2{font-size:19px;margin:0 0 4px;display:flex;align-items:center;gap:10px}
+  h2 .n{width:28px;height:28px;border-radius:8px;background:var(--blue);color:#fff;
+    display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:700}
+  h3{font-size:15px;margin:20px 0 8px;color:var(--ink)}
+  ol.steps{margin:6px 0 0;padding-left:0;list-style:none;counter-reset:s}
+  ol.steps li{counter-increment:s;position:relative;padding:12px 12px 12px 46px;
+    border-bottom:1px dashed var(--line)}
+  ol.steps li:last-child{border-bottom:none}
+  ol.steps li::before{content:counter(s);position:absolute;left:8px;top:12px;
+    width:26px;height:26px;border-radius:50%;background:#eef3fb;color:var(--blue);
+    font-weight:700;display:flex;align-items:center;justify-content:center;font-size:13px}
+  .tip{background:#fff7ed;border-left:4px solid var(--orange);padding:10px 14px;
+    border-radius:8px;font-size:13px;color:#7a4a14;margin-top:10px}
+  .ok{background:#eafaf0;border-left:4px solid var(--green);padding:10px 14px;
+    border-radius:8px;font-size:13px;color:#1d6b3c;margin-top:10px}
+  .fig{display:flex;justify-content:center;margin:14px 0}
+  table{width:100%;border-collapse:collapse;margin-top:12px;font-size:13px}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:#f0f4fa;font-weight:600}
+  .cap{font-size:12px;color:var(--sub);text-align:center;margin-top:4px}
+  footer{color:var(--sub);font-size:12px;text-align:center;margin-top:24px}
+  @media print{body{background:#fff}section,header{box-shadow:none;break-inside:avoid}}
+</style>
+</head>
+<body data-page-node-id="YKBz9gugSMuredD4zzhN89">
+<div class="wrap" data-page-node-id="pHzufKHqX0yidAv1Vn7uAO">
+
+  <header data-page-node-id="k2qNRwRKGW1hFLj4Ngq8jo">
+    <h1 data-page-node-id="Vw9CwoAlKxOAjYo9yrWBjZ">焊缝疲劳合规检查器 · iPad 操作指引</h1>
+    <p data-page-node-id="EijHDCPAUyX7fcpiH9mSjJ">适用设备：iPad Pro 2025 11″ M5（带 LiDAR）· 系统 iPadOS 18+ · 日期 2026-09</p>
+  </header>
+
+  <div class="path-toggle" data-page-node-id="XLkd5BRiqlhuk1HctxFjTC">
+    <span class="tag a" data-page-node-id="5HN5wKAyjLzOhPP17CJFhq">路径 A：PWA（Safari 安装，零 Mac 依赖，今天可用）</span>
+    <span class="tag b" data-page-node-id="1dnTqKXCCkOHeToSzyZpWr">路径 B：原生 LiDAR App（毫米级自动识别，需 Mac 构建）</span>
+  </div>
+
+  <!-- ============ 路径 A ============ -->
+  <section data-page-node-id="KvLHvziuGcVzDAzE5PXPFM">
+    <h2 data-page-node-id="LTZQJ6EQMEpDviNDJmKSXa"><span class="n" data-page-node-id="THBD91mq8kXqO4H2bsG5R2">A</span> PWA 安装与使用（推荐先走这条）</h2>
+    <p style="color:var(--sub);font-size:13px;margin:2px 0 0" data-page-node-id="dRLJ54FihF6S3K8NDFaMVU">
+      把网页当 App 装到 iPad 主屏幕，照片识别 + 自动缺陷识别 + 报告导出全部在端侧完成。<b data-page-node-id="2b5u8RggPHdq3fizBcVErn">唯一限制：WebKit 沙箱下无法用 LiDAR</b>，尺寸靠参照物（银行卡 85.6mm）标定。</p>
+
+    <h3 data-page-node-id="K7a7x36BBMiDFB8LDb6KOV">① 部署（拿到链接，在电脑上做）</h3>
+    <ol class="steps" data-page-node-id="5rqZuGLgtACJCHxRTWmqiY">
+      <li data-page-node-id="0BV7qcQ63CE21ZuKTbCuqq">把整个 <code data-page-node-id="KyOzuNR7YjX28GZoNZmdF5">app_ios/pwa/</code> 文件夹拖到 <b data-page-node-id="ZjfU5OGCFGaQp7mBlmvuvc">Netlify Drop</b>（app.netlify.com/drop），松手即得 <code data-page-node-id="GXXbvzAiGtZ0YtoniWUwBk">https://xxx.netlify.app</code> 链接。</li>
+      <li data-page-node-id="fig3HAuDFRwXLwbg7ml6LS">备选：Cloudflare Pages / GitHub Pages / Tiiny.host，或直接用本地静态服务器。链接<b data-page-node-id="gvV4k67uDZrjbPQrdMuFmY">必须是 HTTPS</b>。</li>
+    </ol>
+
+    <h3 data-page-node-id="aBnyOybvvElPGDWRQM2zjQ">② 在 iPad 上安装（只用 Safari）</h3>
+    <ol class="steps" start="3" data-page-node-id="D2ct7JeN0z42HC7aap5FnN">
+      <li data-page-node-id="JxxdpyA7ESgpV8DGAxsKGp">打开 <b data-page-node-id="SKFRRwWPRgKhVCUUEt2DQK">Safari</b>（蓝色 compass 图标），地址栏输入上面的链接并打开。</li>
+      <li data-page-node-id="OJDiyzWG1BBzalRTPjDXxV">等页面加载完（<b data-page-node-id="wEe2hNdgR8ro3jVE0FQCxT">首次必须联网</b>，让 Service Worker 缓存资源）。</li>
+      <li data-page-node-id="a7uCNhO0HRW2BhV6nRZctZ">点顶部地址栏右侧的 <b data-page-node-id="uudBnDkcVIIQDOP2VRkgcL">分享按钮</b>（⬆ 方框箭头）→ 下滑找到 <b data-page-node-id="aERolCwwlkZCNPjYSnX7HF">“添加到主屏幕”</b>。</li>
+      <li data-page-node-id="F9xT2uTGGass2Ht9YM5ncD">确认名称（默认“焊缝疲劳检查”），点右上角 <b data-page-node-id="TBo56RfFsJ14Ry2TZvfQlN">添加</b>。回到桌面即出现图标，点开全屏离线运行。</li>
+    </ol>
+
+    <div class="fig" data-page-node-id="LfLzSIJOphZSYB1zCx90Kv">
+      <svg width="320" height="240" viewBox="0 0 320 240" xmlns="http://www.w3.org/2000/svg" data-page-node-id="CsCUh865NAuum0kaTpzdo7">
+        <rect x="20" y="20" width="200" height="200" rx="18" fill="#111" stroke="#333" data-page-node-id="ERVD1jrKBIERSELLoBx9iS"/>
+        <rect x="30" y="34" width="180" height="172" rx="6" fill="#eef3fb" data-page-node-id="5Xh8F5vwM3GGT1ffI4BRBA"/>
+        <rect x="38" y="42" width="164" height="22" rx="6" fill="#fff" stroke="#cdd7e3" data-page-node-id="fXL9OFyfZtupKBMD4RKu55"/>
+        <text x="46" y="57" font-size="10" fill="#2274e5" data-page-node-id="BUgGFVhlspfINQzMZWtMKB">🔒 xxx.netlify.app</text>
+        <rect x="38" y="74" width="164" height="120" rx="6" fill="#dfe8f5" data-page-node-id="loYgxQGxvqOLxCKPDdlqt7"/>
+        <text x="120" y="140" font-size="11" fill="#5b6b7b" text-anchor="middle" data-page-node-id="6RvPxPaifGe4wIDRJPMGU7">焊缝外观检查</text>
+        <!-- 分享面板 -->
+        <rect x="170" y="36" width="120" height="150" rx="12" fill="#fff" stroke="#cdd7e3" data-page-node-id="4uwkC1lXUCScS3HXyghtuc"/>
+        <circle cx="200" cy="64" r="9" fill="none" stroke="#2274e5" stroke-width="2" data-page-node-id="UnitQJMvD3Koi5YwFY9yoM"/>
+        <text x="216" y="68" font-size="9" fill="#1f2933" data-page-node-id="hhWTaanmheavNkawFvotHx">分享…</text>
+        <line x1="180" y1="84" x2="280" y2="84" stroke="#e3e8ef" data-page-node-id="ovEtGFVXDa97XmxVhORrIT"/>
+        <rect x="180" y="94" width="100" height="20" rx="5" fill="#eaf1fb" data-page-node-id="pmq44DHLtKRDVfHJ8O2zo9"/>
+        <text x="190" y="108" font-size="9" fill="#2274e5" data-page-node-id="lou4Vk7G9KWhYktcUYsoMd">⬆ 添加到主屏幕</text>
+        <rect x="180" y="120" width="100" height="16" rx="4" fill="#f3f6fa" data-page-node-id="LM1rh1YnKnMHqayxsticy9"/>
+        <text x="190" y="132" font-size="8" fill="#5b6b7b" data-page-node-id="yaA2SXEHHwH08NDTJB2UVn">书签 / 复制链接…</text>
+      </svg>
+    </div>
+    <div class="cap" data-page-node-id="y1mUOceYJ5a73xbR7YRTdp">图：Safari 分享面板 → “添加到主屏幕”</div>
+
+    <h3 data-page-node-id="X8cgTNU2M1Rgizt2MfAr5z">③ 日常使用</h3>
+    <ol class="steps" start="7" data-page-node-id="4rADiyuqbZ7MMCvQbh8qVN">
+      <li data-page-node-id="CAMyYY36AmAmog27zrje11">点主屏图标打开（全屏、无地址栏）。</li>
+      <li data-page-node-id="DHeO5u6pz4RAMItH1qFn7K">点 <b data-page-node-id="jiyiScgAHRue5vGz5YJR1c">“拍摄 / 选择照片”</b>：iOS 弹出<b data-page-node-id="0FErMvGzhciXtHujnghAhE">“拍摄 / 从相册选择”</b>面板，两种方式都能用。</li>
+      <li data-page-node-id="M4fMWUYrzOJv7DP9QGSq9C">选图后程序<b data-page-node-id="3jZFVHg2o8ejwwlsuBfZKD">自动识别</b>疑似缺陷（气孔 / 余高 / 咬边），写入清单，你复核微调。</li>
+      <li data-page-node-id="7W1WqgCAJl9YVdxWfQKm8X">填好接头类型、荷载方向、改善措施后，点 <b data-page-node-id="xUqReSK6rQj0oAHTmOSEji">“导出报告(PDF)”</b>：弹打印面板 → PDF → 存储到“文件”App。</li>
+    </ol>
+
+    <div class="tip" data-page-node-id="b5QKRcpGCnpJCzRgPV7KAe">⚠️ 安装只能用 Safari。Chrome/Edge 不会显示“添加到主屏幕”。首次需联网；之后断网可用。</div>
+    <div class="ok" data-page-node-id="QXqFZLXOUkMNAR4jEubckz">✅ 装好后：拍照识别 + 自动缺陷识别 + 疲劳判定 + 报告导出，全部离线完成。</div>
+  </section>
+
+  <!-- ============ 路径 B ============ -->
+  <section data-page-node-id="sBASYo1ALZeHHfr4tytRpr">
+    <h2 data-page-node-id="fGIKWf6xvfMb5bycfHWSLs"><span class="n" data-page-node-id="Hn9AwvfPxRUA6iczlDsLgS">B</span> 原生 LiDAR App 安装与自动识别</h2>
+    <p style="color:var(--sub);font-size:13px;margin:2px 0 0" data-page-node-id="ZzobEEWjsg8uvXPOsS5Bfy">
+      走 ARKit(LiDAR) 毫米级识别焊缝余高、左右焊趾咬边、错边。<b data-page-node-id="LnHxR4Hvt0553abtVVFjQe">需 Mac + Xcode 16 构建一次</b>，再分发到 iPad。</p>
+
+    <h3 data-page-node-id="50G7c98hyvBTXN1SdnLchn">① 构建与分发（在 Mac 上做）</h3>
+    <ol class="steps" data-page-node-id="CKeZQorSgjqmmvxU5nvvuo">
+      <li data-page-node-id="7w5C3sS0KTB71h7BHq0E1u">Mac 打开 <code data-page-node-id="oiV0hF167e8RJ2yTNMIqvt">app_ios/native/WeldFatigueChecker.xcodeproj</code>，目标选 <b data-page-node-id="pRWmbR7Y70GMtsmfiQxdmH">iPad Pro（LiDAR）/ 真机</b>，Xcode 16，iPadOS 18 部署目标。</li>
+      <li data-page-node-id="BtwetTRK9HoO0vv1dYJ022">编译（⌘R 真机跑；或 Archive 出 .ipa）。</li>
+      <li data-page-node-id="AdgVETi20pMPsSQq66xq6h">分发：<b data-page-node-id="fMmCdC8HO0I6VsuVPRxhJu">TestFlight</b>（内测最简单）/ 企业签名 / Ad Hoc，装到同一台 iPad Pro 2025 M5。</li>
+    </ol>
+
+    <h3 data-page-node-id="UivSo5UdVgEm9lHYGkvKLR">② iPad 上自动识别焊缝（LiDAR）</h3>
+    <ol class="steps" start="4" data-page-node-id="1qRFWjP5wff8H74iQ2iTxJ">
+      <li data-page-node-id="OZlAgaSVTXTJEigm1vgcBY">打开 App → 底部切到 <b data-page-node-id="0JmmwbpH1bPOA8q1gCPP2R">“外观检查”</b> 页。</li>
+      <li data-page-node-id="WnYkUUATyfUKBIBcaTNErv">点 <b data-page-node-id="CMs1T4yi5atygwAFyFGrRB">“📡 LiDAR 自动识别焊缝”</b>（仅 LiDAR 设备显示此按钮）。</li>
+      <li data-page-node-id="s8lDJSZkOtRjHODm4UEulR">在弹出扫描页选 <b data-page-node-id="dR2ypELsum7jIbPAiWr2dF">焊缝走向</b>：自动 / 横向 / 纵向。屏幕中线即采样线（自动模式显示十字，横向→竖线，纵向→横线）。</li>
+      <li data-page-node-id="6GauGYJMxGkGD34uygpQsz">将 iPad 正对焊缝，使采样线横切焊缝，保持 <b data-page-node-id="pIUWXfjNRqY8XLHB9uPaz1">20–60cm</b>，缓慢平移几秒建立深度。</li>
+      <li data-page-node-id="7O9FulFhXhJKLvYb5N5A8Z">点 <b data-page-node-id="5VcctwuVGoFyEDWxat0P47">“扫描焊缝”</b>：LiDAR 读深度剖面，<b data-page-node-id="C4cRClR1z1QQ9UQymAx3FO">自动识别</b>余高 / 咬边 / 错边并带实测 mm 写进缺陷清单。</li>
+      <li data-page-node-id="RjToQCG0dUV7DnoUHFATtz">回到外观检查页，逐条复核/微调；再走“设计审查 + 疲劳计算 → 报告”。</li>
+    </ol>
+
+    <div class="fig" data-page-node-id="elVcibOaqMI5JqvYsEFyB2">
+      <svg width="340" height="240" viewBox="0 0 340 240" xmlns="http://www.w3.org/2000/svg" data-page-node-id="4EIG3gpwBanVkrCq66nULv">
+        <rect x="40" y="18" width="220" height="204" rx="20" fill="#111" stroke="#333" data-page-node-id="upIRPmdGGjXmlbKtO8MoNJ"/>
+        <rect x="50" y="32" width="200" height="176" rx="6" fill="#101418" data-page-node-id="0wDcS20E0Bo1CdQi5vqAXg"/>
+        <!-- 焊缝 3D 示意 -->
+        <polygon points="60,150 280,150 270,120 70,120" fill="#3a4654" data-page-node-id="qluGWoAt9NnFXjXsfAJD9l"/>
+        <polygon points="70,120 270,120 200,96 140,96" fill="#566374" data-page-node-id="CYWBFwgpOtppcAB20ARqur"/>
+        <polygon points="140,96 200,96 170,84 170,84" fill="#6f7d8e" data-page-node-id="uwRknPMy29ngPFYa4n5lL8"/>
+        <!-- 采样十字 -->
+        <line x1="50" y1="120" x2="250" y2="120" stroke="#ffd400" stroke-width="2" data-page-node-id="DTrPUmYWCrVlywZ1XtpPdm"/>
+        <line x1="170" y1="32" x2="170" y2="208" stroke="#ffd400" stroke-width="2" stroke-dasharray="4 4" data-page-node-id="u5Xkt0vvQm4erDF45VDbof"/>
+        <!-- 顶部状态 -->
+        <rect x="60" y="38" width="180" height="20" rx="6" fill="rgba(255,255,255,.12)" data-page-node-id="CDWCzmlmFv3Fy3T3NAL1Ur"/>
+        <text x="150" y="52" font-size="9" fill="#fff" text-anchor="middle" data-page-node-id="ZCizwAULjQOQVmmtfk8AAt">📡 LiDAR 自动识别焊缝</text>
+        <!-- 走向分段 -->
+        <rect x="60" y="186" width="180" height="16" rx="6" fill="rgba(255,255,255,.12)" data-page-node-id="yoz4i3g13k0hNYMJ2iXmXo"/>
+        <text x="84" y="198" font-size="8" fill="#fff" data-page-node-id="sgWBAcVcsipZJIk1zwznZl">自动</text>
+        <text x="128" y="198" font-size="8" fill="#ffd400" data-page-node-id="4hpY9LRa25ehRq3uNtDkDY">横向</text>
+        <text x="172" y="198" font-size="8" fill="#fff" data-page-node-id="sGmKG4CUjv9CNbzc9wa49S">纵向</text>
+        <!-- 扫描按钮 -->
+        <rect x="70" y="208" width="140" height="0" fill="#2274e5" data-page-node-id="eCPuJbK4aFd05GZsyUR85m"/>
+      </svg>
+    </div>
+    <div class="cap" data-page-node-id="Ekv32PfvbuDXtCDnUGd0bS">图：扫描页——黄色十字为采样线（自动模式），底部选焊缝走向</div>
+
+    <div class="tip" data-page-node-id="LIEgEl6GozEgVpLKBu8uuk">⚠️ 走向“自动”依赖深度图横/纵列变差比较；若焊缝很短或角度特殊，建议手动选“横向/纵向”更稳。</div>
+    <div class="ok" data-page-node-id="AfFs50qjG2rKG1QWiJrDz2">✅ 识别项自动写入缺陷清单（带实测 mm），无需参照物，精度显著优于 PWA 的视觉估计。</div>
+  </section>
+
+  <!-- ============ 对照 ============ -->
+  <section data-page-node-id="7BwP54wrk7rp3Ewc0LNGwu">
+    <h2 data-page-node-id="JAhbiwuUHv4xA2fG86n3w1"><span class="n" data-page-node-id="1NubwerK7ExI4xnDdkYcHy">≠</span> 两条路径能力对照</h2>
+    <table data-page-node-id="zGBoL7HOiJHp9Jidk2v5MS">
+      <tr data-page-node-id="CBHI4RHTNoFLu79Hp6UjKX"><th data-page-node-id="mqOYxi5SXjFkylTMbzFB01">能力</th><th data-page-node-id="mAVezkvRvuP0Ywmeb05I26">路径 A · PWA（Safari）</th><th data-page-node-id="aa14HBnSxI7JlSy4C5wzF1">路径 B · 原生 LiDAR</th></tr>
+      <tr data-page-node-id="dVhvLg9vr5pZetjhD9QmxY"><td data-page-node-id="db4HxgaBUiYFztd7MXyxGl">安装方式</td><td data-page-node-id="ZuGUsHiZzluQ9BAMRDuneN">Safari 分享 → 添加到主屏幕</td><td data-page-node-id="ybm8mRkyYQ3LyHrPfrbZGG">Mac 构建 .ipa → TestFlight/企业签</td></tr>
+      <tr data-page-node-id="KgIdUQnUD9urhA7uAcrqv4"><td data-page-node-id="1XkT28GxwpIrhdJ8Yocouv">图片选择（相册/相机）</td><td data-page-node-id="LPpGTEwbS13PDJLctCDgPA">✅ 动作面板任选</td><td data-page-node-id="uDEyMlGoFBIPB31XvXgFtz">✅ PhotosPicker</td></tr>
+      <tr data-page-node-id="ZT87LTAPexZByEko4tV46z"><td data-page-node-id="eHQaqWSA88OT7gBdhSsSyl">拍照后自动识别缺陷</td><td data-page-node-id="GyeayCbrgRpm8DpBwGetXH">✅ 端侧启发式（气孔/余高/咬边）</td><td data-page-node-id="lTExOFji9QcFYBFXwDxSet">—</td></tr>
+      <tr data-page-node-id="rYJ0BxTiMTxaZjEOnK6o5m"><td data-page-node-id="GXVVpm4WB0NhAyU3RWRlW7">LiDAR 毫米级识别</td><td data-page-node-id="Ns53nyq9UGdSjG8cRF88ou">❌ WebKit 沙箱限制</td><td data-page-node-id="hvPCrMYsrL8wWkaJ5SIAh8">✅ 余高/咬边/错边（实测 mm）</td></tr>
+      <tr data-page-node-id="xzviXbH8lbDBEDWLDDsgM5"><td data-page-node-id="piTsYa1o9CcLQaHtFoFfvG">焊缝走向自适应</td><td data-page-node-id="LpwyIW9e9YZbsujNt7BKes">—</td><td data-page-node-id="GobNT60bSVx6pPXIIyO5fH">✅ 自动/横向/纵向取中线</td></tr>
+      <tr data-page-node-id="zLtomXOFcaA6HDUvPC8kVd"><td data-page-node-id="THnPoK2DtwAGvEAHc0WU8U">报告导出</td><td data-page-node-id="KXkUEeqsQzwk5lLncNcBSb">✅ 干净 PDF（打印面板）</td><td data-page-node-id="nbxDVmxOlaWqgp3ZYCrrv9">✅ PDF（PDFKit）</td></tr>
+      <tr data-page-node-id="LW4GEk9s7MkmJRAeNit3NT"><td data-page-node-id="SPucLkYo8T9Az1nLobdh3w">离线使用</td><td data-page-node-id="rAFxvt32xnWMWkzTWvXqdy">✅ Service Worker 缓存</td><td data-page-node-id="zxWH1DyDxMNFdATIzF83Ml">✅ 全本地</td></tr>
+      <tr data-page-node-id="uoF0SM2Bq9T8FzFm524dOG"><td data-page-node-id="85tSHuQsiIhLmubtwgfvpW">Mac 依赖</td><td data-page-node-id="KB2bUuqcvfVjE3DyngPfVm">❌ 零依赖</td><td data-page-node-id="1Qbyw0FFW95ZEebQXvBubn">✅ 需 Mac + Xcode 16</td></tr>
+    </table>
+  </section>
+
+  <footer data-page-node-id="Gv8g1x5qptfxqFIvB6pYhc">本指引为操作说明；所有自动识别均为辅助性几何/视觉启发式，最终判定须由持证人员按 ISO 5817 / EN 1993-1-9 结合无损检测确认。</footer>
+</div>
+</body>
+</html>

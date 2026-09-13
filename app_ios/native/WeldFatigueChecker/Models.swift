@@ -1,0 +1,89 @@
+// Models.swift
+// 共享数据模型：输入（3D 设计 / 照片 / 荷载）与评估结果
+// 与 weld_fatigue_checker/engine/* 同源移植（EN 1993-1-9 + ISO 5817）
+
+import Foundation
+
+// MARK: - 3D 设计输入
+struct DesignInput {
+    var jointType: String = "cruciform"        // butt|fillet|t_joint|cruciform|corner|lap
+    var weldType: String = "fillet"            // butt|fillet
+    var loadingDirection: String = "transverse" // transverse|longitudinal
+    var loadCarrying: Bool = true
+    var fullPenetration: Bool = false
+    var groundFlush: Bool = false
+    var attachmentLengthMm: Double? = 60
+    var plateThicknessMm: Double = 12
+    var copeHole: Bool = false
+    var inTensionZone: Bool = true
+    var stiffenerEnd: String = "square"        // square|radius|taper
+    var coverTermination: String = "abrupt"     // abrupt|taper
+    var misalignmentMm: Double? = 0
+    var runoffTabs: Bool = false
+    var highCycle: Bool = false
+    var crossing: Bool = false
+    var intermittent: Bool = false
+    var weldContinuous: Bool = true
+    var improvementsApplied: [String] = []
+}
+
+// MARK: - 照片视觉输入
+struct ImperfectionInput {
+    var type: String       // undercut|porosity|excess_weld_metal|overlap|linear_misalignment
+    var sizeMm: Double?
+    var poreMm: Double?
+    // 照片上标注的缺陷位置（归一化坐标 0..1，原点左上）；用于「图上标注模式」
+    var location: CGPoint?
+    // 照片上自动标注的缺陷边界框（归一化矩形 0..1）；有 bbox 即视为自动识别生成
+    var bbox: CGRect? = nil
+    // 缺陷在原图中的像素尺寸（宽/高）；用于标定后换算为 mm
+    var pixelSize: CGSize? = nil
+}
+struct VisionInput {
+    var jointType: String = "fillet"          // 照片识别的接头类型
+    var loadingDirection: String = "transverse"
+    var loadCarrying: Bool = false
+    var detailCandidate: String? = nil
+    var improvementsApplied: [String] = []
+    var imperfections: [ImperfectionInput] = []
+}
+
+// MARK: - 用户荷载参数
+struct UserParams {
+    var deltaSigma: Double = 70
+    var nRequired: Double = 2_000_000
+    var gammaMf: Double = 1.0
+    var qualityLevel: String = "C"   // B|C|D
+    var thickness: Double = 12
+}
+
+// MARK: - 结果结构
+struct ImprovementSuggestion { let action: String; let raisesFatTo: Int?; let effort: String }
+struct DesignWarning {
+    let id: String; let severity: String; let title: String
+    let finding: String; let suggestions: [ImprovementSuggestion]
+}
+struct DesignReviewResult {
+    let detailId: String?; let detailName: String?; let baseFat: Int?
+    let warnings: [DesignWarning]
+}
+struct FatigueResult {
+    let detailId: String; let detailName: String; let baseFat: Int
+    let improvements: [(label: String, factor: Double, fatAfter: Double)]
+    let effectiveFat: Double; let deltaSigma: Double; let gammaMf: Double
+    let nAllowable: Double; let nRequired: Double; let utilization: Double; let pass: Bool
+}
+struct ImperfectionResult {
+    let label: String; let accepted: Bool?; let limit: String; let fatigueRelevant: Bool
+}
+struct PlanItem {
+    let priority: String; let ruleId: String; let title: String
+    let action: String; let raisesFatTo: Int?; let effort: String
+}
+struct AssessmentResult {
+    let design: DesignReviewResult
+    let fatigue: FatigueResult
+    let imperfections: [ImperfectionResult]
+    let plan: [PlanItem]
+    let disclaimer: String
+}

@@ -1,0 +1,10 @@
+{
+  "joint_type": "cruciform",
+  "weld_type": "fillet",
+  "loading_direction": "transverse",
+  "load_carrying": true,
+  "full_penetration": false,
+  "ground_flush": false,
+  "cope_hole": false,
+  "in_tension_zone": true
+}

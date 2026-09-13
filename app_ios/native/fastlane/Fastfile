@@ -1,0 +1,48 @@
+# Fastfile — 云端 Mac 自动编译并发布到 TestFlight
+# 依赖（GitHub Secrets 注入）：
+#   ASC_API_KEY_ID        App Store Connect API Key 的 Key ID
+#   ASC_API_KEY_ISSUER_ID API Key 的 Issuer ID
+#   ASC_API_KEY_P8        API Key 的 .p8 文件内容（文本）
+#   MATCH_GIT_URL         证书私有库的 https 地址（含 PAT，如 https://<TOKEN>@github.com/user/certs.git）
+#   MATCH_PASSWORD        加密证书库的口令
+#   TEAM_ID               Apple Developer Team ID
+
+default_platform(:ios)
+
+platform :ios do
+  desc "编译并上传到 TestFlight"
+  lane :build_testflight do
+    setup_ci if ENV["CI"]
+
+    # 用 App Store Connect API Key 鉴权（无需 Apple ID 密码）
+    api_key = app_store_connect_api_key(
+      key_id: ENV["ASC_API_KEY_ID"],
+      issuer_id: ENV["ASC_API_KEY_ISSUER_ID"],
+      key_content: ENV["ASC_API_KEY_P8"],
+      is_key_content_base64: false
+    )
+
+    # match 自动管理发布证书 + App Store 描述文件（首次运行会自动创建并上传到 Apple）
+    match(
+      type: "appstore",
+      readonly: false,
+      git_url: ENV["MATCH_GIT_URL"],
+      api_key: api_key
+    )
+
+    # 编译（OCCT 未构建时，STEP/IGES 导入会提示"OCCT 未启用"，其余功能正常）
+    build_app(
+      project: "WeldFatigueChecker.xcodeproj",
+      scheme: "WeldFatigueChecker",
+      clean: true,
+      configuration: "Release",
+      export_method: "app-store"
+    )
+
+    # 上传到 TestFlight（构建处理完成后会自动出现于你的 iPad TestFlight 中）
+    upload_to_testflight(
+      api_key: api_key,
+      skip_waiting_for_build_processing: true
+    )
+  end
+end

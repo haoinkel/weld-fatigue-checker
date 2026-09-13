@@ -1,0 +1,125 @@
+{
+  "schema_version": "1.0",
+  "pack_id": "iso5817",
+  "kind": "acceptance",
+  "code": "ISO 5817:2023",
+  "title": "焊接 钢、镍及镍合金熔焊焊缝缺陷的质量等级",
+  "region": "INT",
+  "version": "2023",
+  "language": "zh-CN",
+  "verified": false,
+  "verification_note": "⚠ 数值为示例，须以 ISO 5817:2023 PDF 原文逐条校核后方可用于工程判定。",
+  "levels": {
+    "B": "最高要求（最高质量等级）",
+    "C": "中等要求（常规）",
+    "D": "较低要求"
+  },
+  "imperfections": [
+    {
+      "type": "undercut",
+      "label": "咬边",
+      "fatigue_relevant": true,
+      "note": "位于焊趾的咬边会显著降低疲劳强度，常要求打磨或按 EN1993-1-9 降/提级处理。",
+      "limits": {
+        "B": {
+          "value": 0.05,
+          "ref": "t",
+          "max_abs": 0.5,
+          "formula": "≤0.05t 且最大 0.5（示例）"
+        },
+        "C": {
+          "value": 0.1,
+          "ref": "t",
+          "max_abs": 1.0,
+          "formula": "≤0.1t 且最大 1.0（示例）"
+        },
+        "D": {
+          "value": 0.15,
+          "ref": "t",
+          "max_abs": 1.5,
+          "formula": "≤0.15t 且最大 1.5（示例）"
+        }
+      }
+    },
+    {
+      "type": "porosity",
+      "label": "气孔",
+      "fatigue_relevant": false,
+      "note": "分散气孔对疲劳影响相对较小，主要按最大孔径与密集度验收。",
+      "limits": {
+        "B": {
+          "max_pore": 0.5,
+          "formula": "单孔 ≤0.5 且密度受限（示例）"
+        },
+        "C": {
+          "max_pore": 1.0,
+          "formula": "单孔 ≤1.0（示例）"
+        },
+        "D": {
+          "max_pore": 1.5,
+          "formula": "单孔 ≤1.5（示例）"
+        }
+      }
+    },
+    {
+      "type": "excess_weld_metal",
+      "label": "余高过大（凸度）",
+      "fatigue_relevant": true,
+      "note": "过大凸度造成应力集中；对接焊缝余高需平滑过渡。",
+      "limits": {
+        "B": {
+          "formula": "余高受限且平缓过渡（示例，见原文）"
+        },
+        "C": {
+          "formula": "（示例，见原文）"
+        },
+        "D": {
+          "formula": "（示例，见原文）"
+        }
+      }
+    },
+    {
+      "type": "overlap",
+      "label": "焊瘤/满溢",
+      "fatigue_relevant": true,
+      "note": "焊瘤造成尖锐缺口，疲劳不利。",
+      "limits": {
+        "B": {
+          "formula": "不允许（示例）"
+        },
+        "C": {
+          "formula": "不允许/极轻（示例）"
+        },
+        "D": {
+          "formula": "轻微允许（示例）"
+        }
+      }
+    },
+    {
+      "type": "linear_misalignment",
+      "label": "错边",
+      "fatigue_relevant": true,
+      "note": "对接错边引起偏心与应力集中。",
+      "limits": {
+        "B": {
+          "value": 0.1,
+          "ref": "t",
+          "max_abs": 1.0,
+          "formula": "≤0.1t（示例）"
+        },
+        "C": {
+          "value": 0.15,
+          "ref": "t",
+          "max_abs": 2.0,
+          "formula": "≤0.15t（示例）"
+        },
+        "D": {
+          "value": 0.2,
+          "ref": "t",
+          "max_abs": 3.0,
+          "formula": "≤0.2t（示例）"
+        }
+      }
+    }
+  ]
+}

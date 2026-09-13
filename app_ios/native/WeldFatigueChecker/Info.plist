@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDisplayName</key>
+    <string>焊缝疲劳检查</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.yourorg.weldfatiguechecker</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <false/>
+    </dict>
+    <!-- 权限说明：iPad 现场拍照 / 相册 / LiDAR(ARKit) -->
+    <key>NSCameraUsageDescription</key>
+    <string>用于现场拍摄焊缝外观以进行疲劳合规检查</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>用于从相册选取焊缝照片</string>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>用于保存检查报告</string>
+    <key>NSFaceIDUsageDescription</key>
+    <string>用于保护检查记录</string>
+    <!-- 开启 Documents 共享：让用户在「文件」App 中可直接访问 App 的 Documents/StandardPacks 目录（标准包导入与备份） -->
+    <key>UIFileSharingEnabled</key>
+    <true/>
+    <key>LSSupportsOpeningDocumentsInPlace</key>
+    <true/>
+    <key>UISupportsDocumentBrowser</key>
+    <true/>
+    <!-- iPad Pro 11" M5 通用设备族（iPad+iPhone） -->
+    <key>UIDeviceFamily</key>
+    <array>
+        <integer>1</integer>
+        <integer>2</integer>
+    </array>
+    <!-- 最低系统：iPadOS 18（iPad Pro 2025 出厂系统） -->
+    <key>MinimumOSVersion</key>
+    <string>18.0</string>
+    <!-- ARKit / LiDAR：占用相机但与 NSCamera 冲突时按官方建议注释相机权限即可，建议保留以兼容非 ARKit 模式 -->
+    <!-- 若启用 LiDAR 自动标定，ARKit 需要如下（框架已链接即可，无需额外键值） -->
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>processing</string>
+    </array>
+</dict>
+</plist>

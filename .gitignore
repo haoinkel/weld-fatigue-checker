@@ -1,0 +1,13 @@
+# ===== 构建产物 / Xcode =====
+build/
+DerivedData/
+*.xcarchive
+*.hmap
+*.ipa
+
+# ===== 依赖 =====
+node_modules/
+
+# ===== OS / 工具状态 =====
+.DS_Store
+.workbuddy/

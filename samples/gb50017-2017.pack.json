@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0",
+  "pack_id": "gb50017-2017",
+  "kind": "fatigue",
+  "code": "GB 50017-2017",
+  "title": "钢结构设计标准（第16章 疲劳计算）——扩展示例模板",
+  "region": "CN",
+  "version": "2017",
+  "language": "zh-CN",
+  "verified": false,
+  "verification_note": "⚠ 本文件为【扩展示例模板】，用于演示标准扩展接口：数值为占位示例，须由 GB 50017-2017 第16章原文逐条填写并校核后方可用于工程判定。",
+  "defaults": {
+    "ref_N": 2000000,
+    "gamma_mf_default": 1.0,
+    "sn_m": 3
+  },
+  "sn_curve": {
+    "note": "GB 50017 采用 Δσ^m·N = C 形式，参数 C 与 β 按连接类别取值（待按原文填入）"
+  },
+  "detail_categories": [
+    {"id": "GB_J1", "fat": 140, "name": "示例-轧制钢材原状（待校核）", "verified": false, "note": "占位值"},
+    {"id": "GB_J2", "fat": 125, "name": "示例-自动焊对接无起止点（待校核）", "verified": false, "note": "占位值"},
+    {"id": "GB_J3", "fat": 100, "name": "示例-手工焊对接/角焊（待校核）", "verified": false, "note": "占位值"},
+    {"id": "GB_J4", "fat": 90,  "name": "示例-横向角焊缝焊趾（待校核）", "verified": false, "note": "占位值"},
+    {"id": "GB_J5", "fat": 80,  "name": "示例-承载十字接头（待校核）", "verified": false, "note": "占位值"},
+    {"id": "GB_J6", "fat": 71,  "name": "示例-纵向角焊缝（待校核）", "verified": false, "note": "占位值"}
+  ],
+  "improvement_methods": [
+    {"method": "toe_grinding", "label": "焊趾打磨", "factor": 1.3, "max_fat": 125, "note": "待按 GB 50017 原文确认"},
+    {"method": "hammer_peening", "label": "锤击强化", "factor": 1.5, "max_fat": 125, "note": "待按 GB 50017 原文确认"}
+  ]
+}

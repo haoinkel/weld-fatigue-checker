@@ -1,0 +1,38 @@
+name: Build & Ship to TestFlight
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:   # 允许在 GitHub 网页上手动触发
+
+jobs:
+  build:
+    runs-on: macos-latest   # GitHub 托管的云端 Mac（含 Xcode 16）
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+
+      - name: Select Xcode 16
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Regenerate xcodeproj (纯 python，确保文件清单最新)
+        working-directory: app_ios/native
+        run: python3 tools/gen_xcodeproj.py
+
+      - name: Fastlane build + upload to TestFlight
+        working-directory: app_ios/native
+        env:
+          ASC_API_KEY_ID:          ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_KEY_ISSUER_ID:   ${{ secrets.ASC_API_KEY_ISSUER_ID }}
+          ASC_API_KEY_P8:          ${{ secrets.ASC_API_KEY_P8 }}
+          MATCH_GIT_URL:           ${{ secrets.MATCH_GIT_URL }}
+          MATCH_PASSWORD:          ${{ secrets.MATCH_PASSWORD }}
+          TEAM_ID:                 ${{ secrets.TEAM_ID }}
+        run: bundle exec fastlane build_testflight
