@@ -177,7 +177,9 @@ struct Model3DView: View {
     private func loadViaModelIO(_ url: URL, _ err: inout String?) -> SCNNode? {
         do {
             let asset = MDLAsset(url: url)
-            let scene = SCNScene(mdlAsset: asset)
+            // Xcode 26 / iOS 26.5 SDK 已移除 Swift 便捷构造器 init(mdlAsset:)，
+            // 改调仍可用的 Obj-C 工厂方法 sceneWithMDLAsset:（仅 deprecation 警告）。
+            let scene = SCNScene.sceneWithMDLAsset(asset)
             let node = SCNNode()
             for child in scene.rootNode.childNodes { node.addChildNode(child) }
             if node.childNodes.isEmpty && node.geometry == nil {
