@@ -375,17 +375,20 @@ final class StandardPackRegistry {
             improvements: improvs,
             imperfections: imps,
             levels: levels.isEmpty ? ["B", "C", "D"] : levels,
-            fatigueMeta: (f?.code ?? "疲劳标准", f?.title ?? "", f?.displayVersion ?? "",
-                          f?.verified ?? false, f?.verificationNote ?? ""),
-            acceptanceMeta: (a?.code ?? "验收标准", a?.title ?? "", a?.displayVersion ?? "",
-                             a?.verified ?? false, a?.verificationNote ?? "")
+            fatigueMeta: (code: f?.code ?? "疲劳标准", title: f?.title ?? "", version: f?.displayVersion ?? "",
+                          verified: f?.verified ?? false, note: f?.verificationNote ?? ""),
+            acceptanceMeta: (code: a?.code ?? "验收标准", title: a?.title ?? "", version: a?.displayVersion ?? "",
+                             verified: a?.verified ?? false, note: a?.verificationNote ?? "")
         )
     }
 
     var standardsSummary: String {
         let c = current()
-        return "疲劳：\(c.fatigueMeta.code) v\(c.fatigueMeta.version)（\(c.fatigueMeta.verified ? "已校核" : "待校核"），\(c.details.count) 条细节）\n" +
-               "验收：\(c.acceptanceMeta.code) v\(c.acceptanceMeta.version)（\(c.acceptanceMeta.verified ? "已校核" : "待校核"），\(c.imperfections.count) 类缺陷）"
+        let fatigueVerified = c.fatigueMeta.verified ? "已校核" : "待校核"
+        let acceptanceVerified = c.acceptanceMeta.verified ? "已校核" : "待校核"
+        let fLine = "疲劳：\(c.fatigueMeta.code) v\(c.fatigueMeta.version)（\(fatigueVerified)，\(c.details.count) 条细节）"
+        let aLine = "验收：\(c.acceptanceMeta.code) v\(c.acceptanceMeta.version)（\(acceptanceVerified)，\(c.imperfections.count) 类缺陷）"
+        return fLine + "\n" + aLine
     }
 }
 

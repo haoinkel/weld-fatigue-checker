@@ -196,7 +196,7 @@ struct PhotoCheckView: View {
     private func loadPhoto(from item: PhotosPickerItem?) {
         guard let item else { return }
         item.loadTransferable(type: Data.self) { result in
-            if case .success(let data), let data, let ui = UIImage(data: data) {
+            if case .success(let data) = result, let ui = UIImage(data: data) {
                 DispatchQueue.main.async {
                     store.photo = ui
                     calMode = false; calPts = []; annoMode = false
