@@ -25,7 +25,7 @@
 4. 开启两步验证（2FA，现在强制）：登录后按提示用验证器 App 或短信绑定。
 5. 生成 Personal Access Token（push 代码要用，GitHub 不允许用密码）：
    - 头像 → **Settings** → **Developer settings** → **Personal access tokens** → **Tokens (classic)**。
-   - **Generate new token (classic)** → Note 填 `weld-ipad` → 勾选 **repo**（全部）→ **Generate token**。
+   - **Generate new token (classic)** → Note 填 `weld-ipad` → 勾选 **repo**（全部）**＋ workflow（推送 `.github/workflows/*.yml` 工作流文件必需，否则 push 会被拒）** → **Generate token**。
    - **立刻复制** `ghp_...` 那串令牌（页面关闭后看不到第二次，存好）。
 
 ## 第 2 步：新建仓库
