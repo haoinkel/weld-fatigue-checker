@@ -174,23 +174,74 @@ struct Model3DView: View {
     }
 
     // MARK: - 其余格式（Model I/O 原生支持）
+    // 说明：Xcode 26 / iOS 26.5 SDK 已移除 SCNScene(mdlAsset:) 与 SCNScene.sceneWithMDLAsset，
+    // 因此这里改为手动把 MDLMesh 的顶点/法线/索引转成 SCNGeometry（仅用未弃用的基础 API）。
     private func loadViaModelIO(_ url: URL, _ err: inout String?) -> SCNNode? {
-        do {
-            let asset = MDLAsset(url: url)
-            // Xcode 26 / iOS 26.5 SDK 已移除 Swift 便捷构造器 init(mdlAsset:)，
-            // 改调仍可用的 Obj-C 工厂方法 sceneWithMDLAsset:（仅 deprecation 警告）。
-            let scene = SCNScene.sceneWithMDLAsset(asset)
-            let node = SCNNode()
-            for child in scene.rootNode.childNodes { node.addChildNode(child) }
-            if node.childNodes.isEmpty && node.geometry == nil {
-                err = "文件已读取但无几何内容（可能为空模型）。"
-                return nil
+        let asset = MDLAsset(url: url)
+        let root = SCNNode()
+        var meshCount = 0
+        func walk(_ obj: MDLObject) {
+            if let mesh = obj as? MDLMesh, let node = scnNode(from: mesh) {
+                root.addChildNode(node)
+                meshCount += 1
             }
-            return node
-        } catch {
-            err = "加载失败：\(error.localizedDescription)"
+            for child in obj.children?.objects ?? [] { walk(child) }
+        }
+        for obj in asset.childObjects?.objects ?? [] { walk(obj) }
+        if meshCount == 0 {
+            err = "文件已读取但无几何内容（可能为空模型或格式不支持）。"
             return nil
         }
+        return root
+    }
+
+    // 把单个 MDLMesh 转为 SCNNode（手动桥接，兼容 iOS 26 SDK）
+    private func scnNode(from mesh: MDLMesh) -> SCNNode? {
+        guard let vd = mesh.vertexDescriptor else { return nil }
+        let attrs = (vd.attributes as? [MDLVertexAttribute]) ?? []
+        let layouts = (vd.layouts as? [MDLVertexBufferLayout]) ?? []
+
+        // 定位 position 属性及其所在 vertex buffer / layout
+        guard let posAttr = attrs.first(where: { $0.name == MDLVertexAttributePosition }) else { return nil }
+        guard let posLayout = layouts.first(where: { $0.bufferIndex == posAttr.bufferIndex }),
+              posLayout.bufferIndex >= 0, posLayout.bufferIndex < mesh.vertexBuffers.count else { return nil }
+        guard let posData = mesh.vertexBuffers[posLayout.bufferIndex].data else { return nil }
+
+        let vCount = mesh.vertexCount
+        let posSrc = SCNGeometrySource(data: posData, semantic: .vertex, vectorCount: vCount,
+            usesFloatComponents: true, componentsPerVector: 3, bytesPerComponent: MemoryLayout<Float>.stride,
+            dataOffset: posAttr.offset, dataStride: posLayout.stride)
+
+        var sources: [SCNGeometrySource] = [posSrc]
+        // 法线（可选）
+        if let nrmAttr = attrs.first(where: { $0.name == MDLVertexAttributeNormal }),
+           let nrmLayout = layouts.first(where: { $0.bufferIndex == nrmAttr.bufferIndex }),
+           nrmLayout.bufferIndex >= 0, nrmLayout.bufferIndex < mesh.vertexBuffers.count,
+           let nrmData = mesh.vertexBuffers[nrmLayout.bufferIndex].data {
+            let nrmSrc = SCNGeometrySource(data: nrmData, semantic: .normal, vectorCount: vCount,
+                usesFloatComponents: true, componentsPerVector: 3, bytesPerComponent: MemoryLayout<Float>.stride,
+                dataOffset: nrmAttr.offset, dataStride: nrmLayout.stride)
+            sources.append(nrmSrc)
+        }
+
+        // 子网格索引
+        var elements: [SCNGeometryElement] = []
+        for sub in mesh.submeshes {
+            guard let idxData = sub.indexBuffer.data, sub.indexCount > 0 else { continue }
+            let bytesPerIndex = (sub.indexType == .uint16) ? 2 : MemoryLayout<UInt32>.stride
+            let isTriangles = (sub.geometryType == .triangles)
+            let primType: SCNGeometryPrimitiveType = isTriangles ? .triangles : .triangleStrip
+            let primCount = isTriangles ? (sub.indexCount / 3) : max(0, sub.indexCount - 2)
+            guard primCount > 0 else { continue }
+            let el = SCNGeometryElement(data: idxData, primitiveType: primType,
+                primitiveCount: primCount, bytesPerIndex: bytesPerIndex)
+            elements.append(el)
+        }
+        if elements.isEmpty { return nil }
+
+        let geo = SCNGeometry(sources: sources, elements: elements)
+        geo.firstMaterial = standardMaterial()
+        return SCNNode(geometry: geo)
     }
 
     private func standardMaterial() -> SCNMaterial {
