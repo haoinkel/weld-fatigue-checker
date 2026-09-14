@@ -5,25 +5,24 @@
     <key>CFBundleDisplayName</key>
     <string>焊缝疲劳检查</string>
     <key>CFBundleExecutable</key>
-    <string>$(EXECUTABLE_NAME)</string>
+    <string>WeldFatigueChecker</string>
     <key>CFBundleIdentifier</key>
-    <string>com.yourorg.weldfatiguechecker</string>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
     <key>CFBundleName</key>
-    <string>$(PRODUCT_NAME)</string>
+    <string>WeldFatigueChecker</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>CFBundleShortVersionString</key>
     <string>1.0</string>
-	<key>LSRequiresIPhoneOS</key>
-	<true/>
-	<key>UIApplicationSceneManifest</key>
+    <key>LSRequiresIPhoneOS</key>
+    <true/>
+    <key>UIApplicationSceneManifest</key>
     <dict>
         <key>UIApplicationSupportsMultipleScenes</key>
         <false/>
     </dict>
-    
     <key>NSCameraUsageDescription</key>
     <string>用于现场拍摄焊缝外观以进行疲劳合规检查</string>
     <key>NSPhotoLibraryUsageDescription</key>
@@ -32,24 +31,19 @@
     <string>用于保存检查报告</string>
     <key>NSFaceIDUsageDescription</key>
     <string>用于保护检查记录</string>
-    
     <key>UIFileSharingEnabled</key>
     <true/>
     <key>LSSupportsOpeningDocumentsInPlace</key>
     <true/>
     <key>UISupportsDocumentBrowser</key>
     <true/>
-    
     <key>UIDeviceFamily</key>
     <array>
         <integer>1</integer>
         <integer>2</integer>
     </array>
-    
     <key>MinimumOSVersion</key>
     <string>18.0</string>
-    
-    
     <key>UIBackgroundModes</key>
     <array>
         <string>processing</string>
