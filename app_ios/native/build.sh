@@ -58,10 +58,10 @@ case "$1" in
     echo "== 编出【未签名】IPA（CODE_SIGNING_ALLOWED=NO）→ 供 Sideloadly 侧载 =="
     python3 tools/gen_xcodeproj.py
     rm -rf build
-    # 使用 -target 直接指定目标，避免 Xcode 26 自动 scheme 的
+    # 通过 gen_xcodeproj.py 生成显式 .xcscheme，避免 Xcode 26 自动 scheme 的
 # "Supported platforms for the buildables ... is empty" 导致 archive 收尾报
 # "Archive Missing Bundle Identifier"。
-    xcodebuild -project "$PROJ" -target WeldFatigueChecker -configuration Release \
+    xcodebuild -project "$PROJ" -scheme "$SCHEME" -configuration Release \
       -destination 'generic/platform=iOS' \
       -archivePath build/WeldFatigueChecker.xcarchive \
       CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \

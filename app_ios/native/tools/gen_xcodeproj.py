@@ -197,6 +197,7 @@ tgt_base = (
   "INSTALL_PATH = /Applications; "
   "GENERATE_INFOPLIST_FILE = NO; "
   "INFOPLIST_FILE = WeldFatigueChecker/Info.plist; "
+  "SDKROOT = iphoneos; SUPPORTED_PLATFORMS = \"iphoneos iphonesimulator\"; "
   "IPHONEOS_DEPLOYMENT_TARGET = 18.0; "
   "LD_RUNPATH_SEARCH_PATHS = (\n\t\t\t\t\"$(inherited)\",\n\t\t\t\t\"@executable_path/Frameworks\",\n\t\t\t); "
   "MARKETING_VERSION = 1.0; "
@@ -258,3 +259,91 @@ if dups:
 if missing or dups or opens != closes:
     sys.exit(1)
 print("pbxproj self-check OK")
+
+# ---- 生成显式 .xcscheme，避免 CI 上自动 scheme 报 "buildables ... is empty" ----
+scheme_dir = os.path.join(out_dir, "xcshareddata", "xcschemes")
+os.makedirs(scheme_dir, exist_ok=True)
+scheme_path = os.path.join(scheme_dir, "WeldFatigueChecker.xcscheme")
+scheme_xml = f'''<?xml version="1.0" encoding="UTF-8"?>
+<Scheme
+   LastUpgradeVersion = "1600"
+   version = "1.7">
+   <BuildAction
+      parallelizeBuildables = "YES"
+      buildImplicitDependencies = "YES">
+      <BuildActionEntries>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "{target}"
+               BuildableName = "WeldFatigueChecker.app"
+               BlueprintName = "WeldFatigueChecker"
+               ReferencedContainer = "container:WeldFatigueChecker.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+      </BuildActionEntries>
+   </BuildAction>
+   <TestAction
+      buildConfiguration = "Debug"
+      selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
+      selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
+      shouldUseLaunchSchemeArgsEnv = "YES"
+      shouldAutocreateTestPlan = "YES">
+      <Testables>
+      </Testables>
+   </TestAction>
+   <LaunchAction
+      buildConfiguration = "Debug"
+      selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
+      selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
+      launchStyle = "0"
+      useCustomWorkingDirectory = "NO"
+      ignoresPersistentStateOnLaunch = "NO"
+      debugDocumentVersioning = "YES"
+      debugServiceExtension = "internal"
+      allowLocationSimulation = "YES">
+      <BuildableProductRunnable
+         runnableDebuggingMode = "0">
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "{target}"
+            BuildableName = "WeldFatigueChecker.app"
+            BlueprintName = "WeldFatigueChecker"
+            ReferencedContainer = "container:WeldFatigueChecker.xcodeproj">
+         </BuildableReference>
+      </BuildableProductRunnable>
+   </LaunchAction>
+   <ProfileAction
+      buildConfiguration = "Release"
+      shouldUseLaunchSchemeArgsEnv = "YES"
+      savedToolIdentifier = ""
+      useCustomWorkingDirectory = "NO"
+      debugDocumentVersioning = "YES">
+      <BuildableProductRunnable
+         runnableDebuggingMode = "0">
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "{target}"
+            BuildableName = "WeldFatigueChecker.app"
+            BlueprintName = "WeldFatigueChecker"
+            ReferencedContainer = "container:WeldFatigueChecker.xcodeproj">
+         </BuildableReference>
+      </BuildableProductRunnable>
+   </ProfileAction>
+   <AnalyzeAction
+      buildConfiguration = "Debug">
+   </AnalyzeAction>
+   <ArchiveAction
+      buildConfiguration = "Release"
+      revealArchiveInOrganizer = "YES">
+   </ArchiveAction>
+</Scheme>
+'''
+with open(scheme_path, "w", encoding="utf-8") as fh:
+    fh.write(scheme_xml)
+print(f"written: {scheme_path}")
