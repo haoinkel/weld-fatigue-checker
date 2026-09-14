@@ -204,6 +204,9 @@ struct Model3DView: View {
         let vd = mesh.vertexDescriptor
         let attrs = (vd.attributes as? [MDLVertexAttribute]) ?? []
         let vbufs = (mesh.vertexBuffers as? [MDLMeshBuffer]) ?? []
+        // iOS 26: vd.layouts 是单值可选 MDLVertexBufferLayout?；stride 在其上（MDLVertexAttribute 没有 stride）
+        let layoutStride = Int(vd.layouts?.stride ?? 0)
+        let useStride = layoutStride > 0 ? layoutStride : (3 * MemoryLayout<Float>.stride)
         guard !vbufs.isEmpty else { return nil }
 
         // position（必需）
@@ -213,7 +216,7 @@ struct Model3DView: View {
         let posVBuf = vbufs[posBufIdx]
         let posMap = posVBuf.map()
         let posData = Data(bytes: posMap.bytes, count: posVBuf.length)
-        let posStride = Int(posAttr.stride)
+        let posStride = useStride
         let posSrc = SCNGeometrySource(data: posData, semantic: .vertex, vectorCount: vCount,
             usesFloatComponents: true, componentsPerVector: 3, bytesPerComponent: MemoryLayout<Float>.stride,
             dataOffset: Int(posAttr.offset), dataStride: posStride)
@@ -226,7 +229,7 @@ struct Model3DView: View {
             let nrmVBuf = vbufs[nrmBufIdx]
             let nrmMap = nrmVBuf.map()
             let nrmData = Data(bytes: nrmMap.bytes, count: nrmVBuf.length)
-            let nrmStride = Int(nrmAttr.stride)
+            let nrmStride = useStride
             let nrmSrc = SCNGeometrySource(data: nrmData, semantic: .normal, vectorCount: vCount,
                 usesFloatComponents: true, componentsPerVector: 3, bytesPerComponent: MemoryLayout<Float>.stride,
                 dataOffset: Int(nrmAttr.offset), dataStride: nrmStride)
