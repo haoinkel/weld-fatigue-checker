@@ -204,19 +204,19 @@ struct Model3DView: View {
         let vd = mesh.vertexDescriptor
         let attrs = (vd.attributes as? [MDLVertexAttribute]) ?? []
         let vbufs = (mesh.vertexBuffers as? [MDLMeshBuffer]) ?? []
-        // iOS 26: vd.layouts 是单值可选 MDLVertexBufferLayout?；stride 在其上（MDLVertexAttribute 没有 stride）
-        let layoutStride = Int(vd.layouts?.stride ?? 0)
-        let useStride = layoutStride > 0 ? layoutStride : (3 * MemoryLayout<Float>.stride)
+        // 注意：iOS 26 的 MDLVertexDescriptor.layouts 是 NSMutableArray（非可选、无 stride 成员），
+        // 因此 stride 改从 MDLVertexAttributeData.stride 取（该属性稳定存在），
+        // offset / bufferIndex 用 MDLVertexAttribute 上已验证可用的字段。
         guard !vbufs.isEmpty else { return nil }
 
         // position（必需）
         guard let posAttr = attrs.first(where: { $0.name == MDLVertexAttributePosition }) else { return nil }
         let posBufIdx = Int(posAttr.bufferIndex)
         guard posBufIdx >= 0, posBufIdx < vbufs.count else { return nil }
+        guard let posAD = mesh.vertexAttributeData(forAttributeNamed: MDLVertexAttributePosition) else { return nil }
+        let posStride = Int(posAD.stride)
         let posVBuf = vbufs[posBufIdx]
-        let posMap = posVBuf.map()
-        let posData = Data(bytes: posMap.bytes, count: posVBuf.length)
-        let posStride = useStride
+        let posData = Data(bytes: posVBuf.map().bytes, count: posVBuf.length)
         let posSrc = SCNGeometrySource(data: posData, semantic: .vertex, vectorCount: vCount,
             usesFloatComponents: true, componentsPerVector: 3, bytesPerComponent: MemoryLayout<Float>.stride,
             dataOffset: Int(posAttr.offset), dataStride: posStride)
@@ -226,10 +226,10 @@ struct Model3DView: View {
         if let nrmAttr = attrs.first(where: { $0.name == MDLVertexAttributeNormal }) {
             let nrmBufIdx = Int(nrmAttr.bufferIndex)
             guard nrmBufIdx >= 0, nrmBufIdx < vbufs.count else { return nil }
+            guard let nrmAD = mesh.vertexAttributeData(forAttributeNamed: MDLVertexAttributeNormal) else { return nil }
+            let nrmStride = Int(nrmAD.stride)
             let nrmVBuf = vbufs[nrmBufIdx]
-            let nrmMap = nrmVBuf.map()
-            let nrmData = Data(bytes: nrmMap.bytes, count: nrmVBuf.length)
-            let nrmStride = useStride
+            let nrmData = Data(bytes: nrmVBuf.map().bytes, count: nrmVBuf.length)
             let nrmSrc = SCNGeometrySource(data: nrmData, semantic: .normal, vectorCount: vCount,
                 usesFloatComponents: true, componentsPerVector: 3, bytesPerComponent: MemoryLayout<Float>.stride,
                 dataOffset: Int(nrmAttr.offset), dataStride: nrmStride)
