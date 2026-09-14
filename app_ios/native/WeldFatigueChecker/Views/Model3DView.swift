@@ -203,7 +203,6 @@ struct Model3DView: View {
         let vCount = mesh.vertexCount
         let vd = mesh.vertexDescriptor
         let attrs = (vd.attributes as? [MDLVertexAttribute]) ?? []
-        let layouts = (vd.layouts as? [MDLVertexBufferLayout]) ?? []
         let vbufs = (mesh.vertexBuffers as? [MDLMeshBuffer]) ?? []
         guard !vbufs.isEmpty else { return nil }
 
@@ -214,7 +213,7 @@ struct Model3DView: View {
         let posVBuf = vbufs[posBufIdx]
         let posMap = posVBuf.map()
         let posData = Data(bytes: posMap.bytes, count: posVBuf.length)
-        let posStride = Int(layouts.first(where: { $0.bufferIndex == posAttr.bufferIndex })?.stride ?? (3 * MemoryLayout<Float>.stride))
+        let posStride = Int(posAttr.stride)
         let posSrc = SCNGeometrySource(data: posData, semantic: .vertex, vectorCount: vCount,
             usesFloatComponents: true, componentsPerVector: 3, bytesPerComponent: MemoryLayout<Float>.stride,
             dataOffset: Int(posAttr.offset), dataStride: posStride)
@@ -227,7 +226,7 @@ struct Model3DView: View {
             let nrmVBuf = vbufs[nrmBufIdx]
             let nrmMap = nrmVBuf.map()
             let nrmData = Data(bytes: nrmMap.bytes, count: nrmVBuf.length)
-            let nrmStride = Int(layouts.first(where: { $0.bufferIndex == nrmAttr.bufferIndex })?.stride ?? (3 * MemoryLayout<Float>.stride))
+            let nrmStride = Int(nrmAttr.stride)
             let nrmSrc = SCNGeometrySource(data: nrmData, semantic: .normal, vectorCount: vCount,
                 usesFloatComponents: true, componentsPerVector: 3, bytesPerComponent: MemoryLayout<Float>.stride,
                 dataOffset: Int(nrmAttr.offset), dataStride: nrmStride)
