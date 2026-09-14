@@ -194,6 +194,7 @@ tgt_base = (
   "CURRENT_PROJECT_VERSION = 1; "
   "DEVELOPMENT_TEAM = \"\"; "
   "ENABLE_BITCODE = NO; "
+  "INSTALL_PATH = /Applications; "
   "GENERATE_INFOPLIST_FILE = NO; "
   "INFOPLIST_FILE = WeldFatigueChecker/Info.plist; "
   "IPHONEOS_DEPLOYMENT_TARGET = 18.0; "

@@ -62,6 +62,7 @@ case "$1" in
       -destination 'generic/platform=iOS' \
       -archivePath build/WeldFatigueChecker.xcarchive \
       CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+      PRODUCT_BUNDLE_IDENTIFIER=com.yourorg.weldfatiguechecker \
       $OCCT_XCCONFIG archive
     # 将未签名的 .app 打成 IPA（IPA = zip(Payload/App.app)），签名交给 Sideloadly
     rm -rf build/Payload
