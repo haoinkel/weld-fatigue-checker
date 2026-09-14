@@ -68,13 +68,15 @@ case "$1" in
       CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
       PRODUCT_BUNDLE_IDENTIFIER=com.yourorg.weldfatiguechecker \
       $OCCT_XCCONFIG build
-    # 将未签名的 .app 打成 IPA（IPA = zip(Payload/App.app)），签名交给 Sideloadly
-    APP_PATH="build/dd/Build/Products/Release-iphoneos/$SCHEME.app"
-    if [ ! -d "$APP_PATH" ]; then
-      echo "❌ 未找到构建产物：$APP_PATH"
+    # 自动定位 .app（Xcode 26 + generic/platform=iOS 产物路径不固定，不硬编码）
+    APP_PATH=$(find build/dd -name "$SCHEME.app" -type d | head -n 1)
+    if [ -z "$APP_PATH" ] || [ ! -d "$APP_PATH" ]; then
+      echo "❌ 未找到构建产物 $SCHEME.app"
       echo "   请检查上面的 xcodebuild 输出是否有编译错误。"
       exit 1
     fi
+    echo "== 找到 .app: $APP_PATH =="
+    du -sh "$APP_PATH"
     rm -rf build/Payload
     mkdir -p build/Payload
     cp -R "$APP_PATH" build/Payload/
