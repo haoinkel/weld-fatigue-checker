@@ -58,19 +58,26 @@ case "$1" in
     echo "== 编出【未签名】IPA（CODE_SIGNING_ALLOWED=NO）→ 供 Sideloadly 侧载 =="
     python3 tools/gen_xcodeproj.py
     rm -rf build
-    # 通过 gen_xcodeproj.py 生成显式 .xcscheme，避免 Xcode 26 自动 scheme 的
-# "Supported platforms for the buildables ... is empty" 导致 archive 收尾报
-# "Archive Missing Bundle Identifier"。
+    # 注意：Xcode 26 的 `xcodebuild archive` 在未签名场景下，收尾的归档校验会读
+    # 一次 bundle id 元数据并报 "Archive Missing Bundle Identifier"（即使 Info.plist
+    # 里 CFBundleIdentifier 已正确展开）。改用 `build` 直接产出 .app，再手动 ditto
+    # 成 IPA，彻底绕过 archive 的归档校验；签名交给 Sideloadly 完成。
     xcodebuild -project "$PROJ" -scheme "$SCHEME" -configuration Release \
       -destination 'generic/platform=iOS' \
-      -archivePath build/WeldFatigueChecker.xcarchive \
+      -derivedDataPath build/dd \
       CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
       PRODUCT_BUNDLE_IDENTIFIER=com.yourorg.weldfatiguechecker \
-      $OCCT_XCCONFIG archive
+      $OCCT_XCCONFIG build
     # 将未签名的 .app 打成 IPA（IPA = zip(Payload/App.app)），签名交给 Sideloadly
+    APP_PATH="build/dd/Build/Products/Release-iphoneos/$SCHEME.app"
+    if [ ! -d "$APP_PATH" ]; then
+      echo "❌ 未找到构建产物：$APP_PATH"
+      echo "   请检查上面的 xcodebuild 输出是否有编译错误。"
+      exit 1
+    fi
     rm -rf build/Payload
     mkdir -p build/Payload
-    cp -R "build/WeldFatigueChecker.xcarchive/Products/Applications/$SCHEME.app" build/Payload/
+    cp -R "$APP_PATH" build/Payload/
     /usr/bin/ditto -c -k --keepParent build/Payload "build/$SCHEME-unsigned.ipa"
     echo "✅ 未签名 IPA 已生成：build/$SCHEME-unsigned.ipa"
     echo "   下一步：把此 IPA 下载到 Windows，用 Sideloadly + 你的免费 Apple ID 签名并安装到 iPad。"
