@@ -180,14 +180,13 @@ struct Model3DView: View {
         let asset = MDLAsset(url: url)
         let root = SCNNode()
         var meshCount = 0
-        func walk(_ obj: MDLObject) {
+        // childObjects(of:) 直接返回资源层级里全部指定类别的对象（iOS 26 仍可用）
+        for obj in asset.childObjects(of: MDLMesh.self) {
             if let mesh = obj as? MDLMesh, let node = scnNode(from: mesh) {
                 root.addChildNode(node)
                 meshCount += 1
             }
-            for child in obj.children?.objects ?? [] { walk(child) }
         }
-        for obj in asset.childObjects?.objects ?? [] { walk(obj) }
         if meshCount == 0 {
             err = "文件已读取但无几何内容（可能为空模型或格式不支持）。"
             return nil
@@ -197,47 +196,45 @@ struct Model3DView: View {
 
     // 把单个 MDLMesh 转为 SCNNode（手动桥接，兼容 iOS 26 SDK）
     private func scnNode(from mesh: MDLMesh) -> SCNNode? {
-        guard let vd = mesh.vertexDescriptor else { return nil }
-        let attrs = (vd.attributes as? [MDLVertexAttribute]) ?? []
-        let layouts = (vd.layouts as? [MDLVertexBufferLayout]) ?? []
-
-        // 定位 position 属性及其所在 vertex buffer / layout
-        guard let posAttr = attrs.first(where: { $0.name == MDLVertexAttributePosition }) else { return nil }
-        guard let posLayout = layouts.first(where: { $0.bufferIndex == posAttr.bufferIndex }),
-              posLayout.bufferIndex >= 0, posLayout.bufferIndex < mesh.vertexBuffers.count else { return nil }
-        guard let posData = mesh.vertexBuffers[posLayout.bufferIndex].data else { return nil }
-
         let vCount = mesh.vertexCount
-        let posSrc = SCNGeometrySource(data: posData, semantic: .vertex, vectorCount: vCount,
+        // position（必需）
+        guard let posAD = mesh.vertexAttributeData(forAttributeNamed: MDLVertexAttributePosition) else { return nil }
+        let posMap = posAD.map
+        let posStart = posAD.dataStart - posMap.bytes
+        let posBuf = Data(bytes: posMap.bytes, count: posMap.length)
+        let posSrc = SCNGeometrySource(data: posBuf, semantic: .vertex, vectorCount: vCount,
             usesFloatComponents: true, componentsPerVector: 3, bytesPerComponent: MemoryLayout<Float>.stride,
-            dataOffset: posAttr.offset, dataStride: posLayout.stride)
+            dataOffset: posStart, dataStride: posAD.stride)
 
         var sources: [SCNGeometrySource] = [posSrc]
-        // 法线（可选）
-        if let nrmAttr = attrs.first(where: { $0.name == MDLVertexAttributeNormal }),
-           let nrmLayout = layouts.first(where: { $0.bufferIndex == nrmAttr.bufferIndex }),
-           nrmLayout.bufferIndex >= 0, nrmLayout.bufferIndex < mesh.vertexBuffers.count,
-           let nrmData = mesh.vertexBuffers[nrmLayout.bufferIndex].data {
-            let nrmSrc = SCNGeometrySource(data: nrmData, semantic: .normal, vectorCount: vCount,
+        // normal（可选）
+        if let nrmAD = mesh.vertexAttributeData(forAttributeNamed: MDLVertexAttributeNormal) {
+            let nrmMap = nrmAD.map
+            let nrmStart = nrmAD.dataStart - nrmMap.bytes
+            let nrmBuf = Data(bytes: nrmMap.bytes, count: nrmMap.length)
+            let nrmSrc = SCNGeometrySource(data: nrmBuf, semantic: .normal, vectorCount: vCount,
                 usesFloatComponents: true, componentsPerVector: 3, bytesPerComponent: MemoryLayout<Float>.stride,
-                dataOffset: nrmAttr.offset, dataStride: nrmLayout.stride)
+                dataOffset: nrmStart, dataStride: nrmAD.stride)
             sources.append(nrmSrc)
         }
 
         // 子网格索引
+        let subs = (mesh.submeshes as? [MDLSubmesh]) ?? []
+        guard !subs.isEmpty else { return nil }
         var elements: [SCNGeometryElement] = []
-        for sub in mesh.submeshes {
-            guard let idxData = sub.indexBuffer.data, sub.indexCount > 0 else { continue }
-            let bytesPerIndex = (sub.indexType == .uint16) ? 2 : MemoryLayout<UInt32>.stride
-            let isTriangles = (sub.geometryType == .triangles)
-            let primType: SCNGeometryPrimitiveType = isTriangles ? .triangles : .triangleStrip
-            let primCount = isTriangles ? (sub.indexCount / 3) : max(0, sub.indexCount - 2)
+        for sub in subs {
+            let idxMap = sub.indexBuffer.map()
+            let idxBytes = Data(bytes: idxMap.bytes, count: idxMap.length)
+            let bytesPerIndex = (sub.indexType == MDLIndexBitDepth.uint16) ? 2 : MemoryLayout<UInt32>.stride
+            let isTri = (sub.geometryType == MDLGeometryType.triangles)
+            let primType: SCNGeometryPrimitiveType = isTri ? .triangles : .triangleStrip
+            let primCount = isTri ? (sub.indexCount / 3) : max(0, sub.indexCount - 2)
             guard primCount > 0 else { continue }
-            let el = SCNGeometryElement(data: idxData, primitiveType: primType,
+            let el = SCNGeometryElement(data: idxBytes, primitiveType: primType,
                 primitiveCount: primCount, bytesPerIndex: bytesPerIndex)
             elements.append(el)
         }
-        if elements.isEmpty { return nil }
+        guard !elements.isEmpty else { return nil }
 
         let geo = SCNGeometry(sources: sources, elements: elements)
         geo.firstMaterial = standardMaterial()
