@@ -22,7 +22,7 @@ if [ -f Vendor/OCCT/lib/libOCCT.a ] && [ -f occt.xcconfig ]; then
   echo "== 检测到 Vendor/OCCT，将启用 USE_OCCT（直读 .step/.iges）=="
   OCCT_XCCONFIG="-xcconfig $(pwd)/occt.xcconfig"
 else
-  echo "（未检测到 Vendor/OCCT：STEP/IGES 导入将提示“OCCT 未启用”；其余格式仍可用）"
+  echo "（未检测到 Vendor/OCCT：STEP/IGES 导入将提示"OCCT 未启用"；其余格式仍可用）"
 fi
 
 case "$1" in
@@ -80,11 +80,13 @@ case "$1" in
     rm -rf build/Payload
     mkdir -p build/Payload
     cp -R "$APP_PATH" build/Payload/
-    # 用 ad-hoc 签名占位（Sideloadly 等侧载工具要求 IPA 至少带有一个可被替换的签名，
-    # 完全无签名会被报 Invalid file）。签名交给 Sideloadly 最终替换。
-    /usr/bin/codesign --sign - --force --deep \
-      --preserve-metadata=identifier,entitlements,flags,runtime \
-      "build/Payload/$SCHEME.app" || true
+    # ⚠️ 不做 ad-hoc 预签名！Xcode 26 的 codesign --sign - 会产 "Info.plist=not bound"
+    # 的签名，导致 Sideloadly 重签后 iOS installd 报 IXErrorDomain Code=13 "Missing bundle ID"
+    # （Apple Developer Forums 同款案例已确认）。构建侧改 codesign 无法修复，根因在
+    # Xcode 26 签名 + 侧载工具重签的兼容性。
+    # 因此产出【完全未签名】的干净 IPA，交给 AltStore（或更新后的 Sideloadly）从头完整签名。
+    # Xcode 26 的 `build`(CODE_SIGNING_ALLOWED=NO) 仍可能留下 linker 占位签名，先剥离确保纯净：
+    /usr/bin/codesign --remove-signature "build/Payload/$SCHEME.app" 2>/dev/null || true
     # 标准未签名 IPA：zip 保留符号链接（-y），结构为 Payload/App.app/...
     cd build
     /usr/bin/zip -r -y -q "$SCHEME-unsigned.ipa" Payload
