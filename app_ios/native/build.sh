@@ -80,7 +80,13 @@ case "$1" in
     rm -rf build/Payload
     mkdir -p build/Payload
     cp -R "$APP_PATH" build/Payload/
-    /usr/bin/ditto -c -k --keepParent build/Payload "build/$SCHEME-unsigned.ipa"
+    # 标准未签名 IPA：zip 保留符号链接（-y），结构为 Payload/App.app/...
+    cd build
+    /usr/bin/zip -r -y -q "$SCHEME-unsigned.ipa" Payload
+    cd ..
+    echo "== IPA 内容校验（前 20 行）=="
+    /usr/bin/unzip -l "build/$SCHEME-unsigned.ipa" | head -n 20
+    ls -lh "build/$SCHEME-unsigned.ipa"
     echo "✅ 未签名 IPA 已生成：build/$SCHEME-unsigned.ipa"
     echo "   下一步：把此 IPA 下载到 Windows，用 Sideloadly + 你的免费 Apple ID 签名并安装到 iPad。"
     ;;
