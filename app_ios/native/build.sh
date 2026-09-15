@@ -60,7 +60,7 @@ case "$1" in
     rm -rf build
     # 注意：Xcode 26 的 `xcodebuild archive` 在未签名场景下，收尾的归档校验会读
     # 一次 bundle id 元数据并报 "Archive Missing Bundle Identifier"（即使 Info.plist
-    # 里 CFBundleIdentifier 已正确展开）。改用 `build` 直接产出 .app，再手动 ditto
+    # 里 CFBundleIdentifier 已正确展开）。改用 `build` 直接产出 .app，再手动 zip
     # 成 IPA，彻底绕过 archive 的归档校验；签名交给 Sideloadly 完成。
     xcodebuild -project "$PROJ" -scheme "$SCHEME" -configuration Release \
       -destination 'generic/platform=iOS' \
@@ -80,6 +80,11 @@ case "$1" in
     rm -rf build/Payload
     mkdir -p build/Payload
     cp -R "$APP_PATH" build/Payload/
+    # 用 ad-hoc 签名占位（Sideloadly 等侧载工具要求 IPA 至少带有一个可被替换的签名，
+    # 完全无签名会被报 Invalid file）。签名交给 Sideloadly 最终替换。
+    /usr/bin/codesign --sign - --force --deep \
+      --preserve-metadata=identifier,entitlements,flags,runtime \
+      "build/Payload/$SCHEME.app" || true
     # 标准未签名 IPA：zip 保留符号链接（-y），结构为 Payload/App.app/...
     cd build
     /usr/bin/zip -r -y -q "$SCHEME-unsigned.ipa" Payload
