@@ -43,6 +43,9 @@ echo "使用 iOS 工具链: $TOOLCHAIN"
 # 已有产物时直接跳过（CI 缓存命中场景）；OCCT_FORCE_BUILD=1 可强制重建
 if [ -f "$VENDOR/lib/libOCCT.a" ] && [ -f "$HERE/occt.xcconfig" ] && [ "${OCCT_FORCE_BUILD:-0}" != "1" ]; then
   echo "检测到 Vendor/OCCT/lib/libOCCT.a 已存在，跳过 OCCT 构建（OCCT_FORCE_BUILD=1 可强制重建）"
+  if [ ! -f "$VENDOR/include/TopoDS_Shape.hxx" ]; then
+    echo "错误：缓存的 Vendor/OCCT 缺少头文件，请升级 CI 缓存 key 或设 OCCT_FORCE_BUILD=1 重建"; exit 1
+  fi
   exit 0
 fi
 
@@ -89,9 +92,20 @@ libtool -static -o "$VENDOR/lib/libOCCT.a" $LIBS
 echo "libOCCT.a 大小：$(du -h "$VENDOR/lib/libOCCT.a" | cut -f1)"
 
 echo "== 拷贝头文件 =="
+# OCCT 8.0 CMake 安装头文件到 <install>/iphoneos/include/opencascade/（不是 inc/）
 mkdir -p "$VENDOR/include"
-cp -R "$SRC/inc/." "$VENDOR/include/" 2>/dev/null || true
-[ -d "$INSTALL/iphoneos/inc" ] && cp -R "$INSTALL/iphoneos/inc/." "$VENDOR/include/" 2>/dev/null || true
+if [ -d "$INSTALL/iphoneos/include/opencascade" ]; then
+  cp -R "$INSTALL/iphoneos/include/opencascade/." "$VENDOR/include/"
+elif [ -d "$INSTALL/iphoneos/inc" ]; then
+  cp -R "$INSTALL/iphoneos/inc/." "$VENDOR/include/"
+elif [ -d "$SRC/inc" ] && [ -f "$SRC/inc/TopoDS_Shape.hxx" ]; then
+  cp -R "$SRC/inc/." "$VENDOR/include/"
+fi
+# 头文件校验：缺失即快速失败，避免 App 构建阶段才暴露
+if [ ! -f "$VENDOR/include/TopoDS_Shape.hxx" ]; then
+  echo "错误：OCCT 头文件未拷贝成功（TopoDS_Shape.hxx 缺失），请检查安装目录布局"; exit 1
+fi
+echo "头文件数量：$(find "$VENDOR/include" -name '*.hxx' | wc -l | tr -d ' ')"
 
 echo "== 生成 occt.xcconfig =="
 cat > "$HERE/occt.xcconfig" <<EOF
