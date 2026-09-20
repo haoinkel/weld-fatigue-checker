@@ -1,2 +1,0 @@
-fatal: unable to access 'https://github.com/haoinkel/weld-fatigue-checker.git/': CONNECT tunnel failed, response 502
-EXIT=128
