@@ -454,7 +454,7 @@ struct BottomBar: View {
 
     private var buttonColor: Color {
         switch state {
-        case .idle: return .blue
+        case .idle: return Theme.cyan
         case .first: return .orange
         default: return .gray
         }
@@ -533,8 +533,10 @@ struct GuideOverlay: View {
                     Text("开始批量测量")
                         .font(.title2.bold())
                         .frame(maxWidth: .infinity).padding()
-                        .background(Color.blue, in: Capsule())
-                        .foregroundStyle(.white)
+                        .background(LinearGradient(colors: [Theme.cyan, Theme.blue],
+                                                   startPoint: .leading, endPoint: .trailing),
+                                     in: Capsule())
+                        .foregroundStyle(.black)
                 }
                 .padding(.top, 8)
             }

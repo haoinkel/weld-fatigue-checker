@@ -175,7 +175,7 @@ struct LiDARWeldScanSheet: View {
                         p.move(to: CGPoint(x: cx, y: 0)); p.addLine(to: CGPoint(x: cx, y: geo.size.height))
                     }
                 }
-                .stroke(Color.yellow.opacity(0.85), lineWidth: 2)
+                .stroke(Theme.cyan.opacity(0.85), lineWidth: 2)
                 .allowsHitTesting(false)
             }
 
@@ -221,8 +221,11 @@ struct LiDARWeldScanSheet: View {
                         Label(scanning ? "识别中…" : "扫描焊缝", systemImage: "waveform")
                             .font(.title2.bold())
                             .frame(maxWidth: .infinity).padding(.vertical, 14)
-                            .background(Color.blue, in: Capsule())
-                            .foregroundStyle(.white)
+                            .background(LinearGradient(colors: [Theme.cyan, Theme.blue],
+                                                       startPoint: .leading, endPoint: .trailing),
+                                        in: Capsule())
+                            .foregroundStyle(.black)
+                            .shadow(color: Theme.cyan.opacity(0.4), radius: 10, y: 0)
                     }
                     .disabled(scanning)
 

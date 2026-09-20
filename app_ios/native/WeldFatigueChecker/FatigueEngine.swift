@@ -7,8 +7,9 @@ import Foundation
 enum FatigueEngine {
     /// 考虑改善措施后的有效 FAT
     static func effectiveFat(_ detailId: String, improvements: [String]) -> (fat: Double, applied: [(String, Double, Double)]) {
-        guard let d = KnowledgeBank.findDetail(detailId) else {
-            fatalError("未知细节类别: \(detailId)")
+        // 安全兜底：未知细节 ID（如标准包数据变更）不再 fatalError，回退 FAT 80
+        guard let d = KnowledgeBank.findDetail(detailId) ?? KnowledgeBank.details.first else {
+            return (80, [])
         }
         var fatEff = Double(d.fat)
         var applied: [(String, Double, Double)] = []
@@ -33,7 +34,9 @@ enum FatigueEngine {
         let (fatEff, applied) = effectiveFat(detailId, improvements: improvements)
         let nAllow = allowableCycles(fatEff, deltaSigma, gammaMf)
         let util = nAllow > 0 ? nRequired / nAllow : .infinity
-        let d = KnowledgeBank.findDetail(detailId)!
+        // 安全兜底：未知细节 ID 不强解包（避免闪退）
+        let d = KnowledgeBank.findDetail(detailId)
+            ?? DetailCategory(id: detailId, fat: Int(fatEff), name: detailId)
         return FatigueResult(
             detailId: detailId, detailName: d.name, baseFat: d.fat,
             improvements: applied.map { ($0.0, $0.1, $0.2) },

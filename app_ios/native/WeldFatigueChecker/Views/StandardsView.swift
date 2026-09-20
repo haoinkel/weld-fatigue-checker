@@ -93,7 +93,10 @@ struct StandardsView: View {
                     Section(header: Text("操作结果")) { Text(message).font(.caption) }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Theme.bgGradient.ignoresSafeArea())
             .navigationTitle("标准包")
+            .navigationViewStyle(.stack)   // iPad 上强制单栏
             .onAppear(perform: reload)
             .onReceive(NotificationCenter.default.publisher(for: .standardsDidChange)) { _ in reload() }
             .fileImporter(isPresented: $showImporter,
@@ -182,7 +185,9 @@ struct Tag: View {
     let color: Color
     var body: some View {
         Text(text).font(.caption2).padding(.horizontal, 6).padding(.vertical, 2)
-            .background(color.opacity(0.18)).foregroundColor(color)
+            .background(color.opacity(0.16))
+            .foregroundStyle(color)
+            .overlay(Capsule().stroke(color.opacity(0.45), lineWidth: 0.5))
             .clipShape(Capsule())
     }
 }

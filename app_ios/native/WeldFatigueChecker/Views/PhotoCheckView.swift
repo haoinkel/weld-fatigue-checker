@@ -23,19 +23,25 @@ struct PhotoCheckView: View {
     @State private var showCalAlert: Bool = false
     @State private var calRealMm: String = ""
 
+    // 阶段2：检测引擎开关；true=优先 Core ML 模型（未加载时自动回退 CV）
+    @State private var useMLModel: Bool = MLDefectDetector.useMLModel
+
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("① 焊缝外观检查（iPad 现场拍照）")
-                        .font(.headline)
+                    SectionTitle(text: "① 焊缝外观检查", systemImage: "camera.viewfinder")
                     Text("用 iPad 相机/相册选取焊缝照片，记录接头类型与表面缺陷。\n进阶：用 ARKit(LiDAR) 自动测得咬边/气孔等缺陷的真实尺寸，无需参照物。")
-                        .font(.caption).foregroundColor(.secondary)
+                        .font(.caption).foregroundStyle(Theme.textSecondary)
 
                     PhotosPicker(selection: $pickerItem, matching: .images) {
                         Label("拍摄 / 选择照片", systemImage: "camera.fill")
-                            .frame(maxWidth: .infinity).padding(10)
-                            .background(Color.blue.opacity(0.12)).cornerRadius(10)
+                            .frame(maxWidth: .infinity).padding(12)
+                            .foregroundStyle(.black)
+                            .background(LinearGradient(colors: [Theme.cyan, Theme.blue],
+                                                       startPoint: .leading, endPoint: .trailing),
+                                         in: Capsule())
+                            .shadow(color: Theme.cyan.opacity(0.35), radius: 10, y: 0)
                     }
                     .onChange(of: pickerItem) { _, newItem in loadPhoto(from: newItem) }
 
@@ -45,12 +51,32 @@ struct PhotoCheckView: View {
                             showLidarScan = true
                         } label: {
                             Label("📡 LiDAR 自动识别焊缝", systemImage: "waveform")
-                                .frame(maxWidth: .infinity).padding(10)
-                                .background(Color.orange.opacity(0.15)).cornerRadius(10)
+                                .frame(maxWidth: .infinity).padding(12)
+                                .foregroundStyle(.white)
+                                .background(LinearGradient(colors: [Color.orange, Color(red: 1, green: 0.5, blue: 0.1)],
+                                                           startPoint: .leading, endPoint: .trailing),
+                                            in: Capsule())
+                                .shadow(color: Color.orange.opacity(0.35), radius: 10, y: 0)
                         }
                         .sheet(isPresented: $showLidarScan) {
                             LiDARWeldScanSheet().environmentObject(store)
                         }
+                    }
+
+                    // 实时相机预览识别（任意带摄像头的设备可用，不依赖 LiDAR）
+                    Button {
+                        showLiveScan = true
+                    } label: {
+                        Label("🎥 实时扫描识别", systemImage: "video.circle")
+                            .frame(maxWidth: .infinity).padding(12)
+                            .foregroundStyle(.white)
+                            .background(LinearGradient(colors: [Theme.violet, Color(red: 0.5, green: 0.3, blue: 1.0)],
+                                                       startPoint: .leading, endPoint: .trailing),
+                                         in: Capsule())
+                            .shadow(color: Theme.violet.opacity(0.35), radius: 10, y: 0)
+                    }
+                    .fullScreenCover(isPresented: $showLiveScan) {
+                        LiveScanView().environmentObject(store)
                     }
 
                     if let img = store.photo {
@@ -72,19 +98,19 @@ struct PhotoCheckView: View {
                                     calMode.toggle()
                                     if calMode { annoMode = false; calPts = [] }
                                 } label: {
-                                    Label("📏 标定比例", systemImage: "ruler")
-                                        .font(.subheadline)
-                                        .padding(.horizontal, 8).padding(.vertical, 6)
-                                        .background(calMode ? Color.blue : Color.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
-                                        .foregroundStyle(calMode ? .white : .blue)
+                                Label("📏 标定比例", systemImage: "ruler")
+                                    .font(.subheadline)
+                                    .padding(.horizontal, 8).padding(.vertical, 6)
+                                    .background(calMode ? Theme.cyan : Theme.cyan.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                                    .foregroundStyle(calMode ? .black : Theme.cyan)
                                 }
                             }
                             if let ppm = store.photoPxPerMm {
                                 Text("已标定：1 mm ≈ \(ppm, specifier: "%.2f") px（自动框尺寸按 mm 显示）")
-                                    .font(.caption2).foregroundStyle(.blue)
+                                    .font(.caption2).foregroundStyle(Theme.cyan)
                             } else {
                                 Text("未标定：自动框尺寸暂以像素显示。点「📏 标定比例」在参照物上点两点并输入真实长度。")
-                                    .font(.caption2).foregroundStyle(.secondary)
+                                    .font(.caption2).foregroundStyle(Theme.textSecondary)
                             }
 
                             AnnotationPhotoView(
@@ -131,9 +157,34 @@ struct PhotoCheckView: View {
                             Text("横向").tag("transverse"); Text("纵向").tag("longitudinal")
                         }
                         Toggle("荷载经焊缝传递（承载）", isOn: $store.vision.loadCarrying)
+
+                        // 母材厚度 t：驱动 ISO 5817 评级（咬边/气孔按 t 比例判定）
+                        // 默认从「设计输入」的厚度同步，也可在此直接覆盖。
+                        HStack {
+                            Text("母材厚度 t (mm)").font(.subheadline)
+                            Spacer()
+                            TextField("12", value: $store.vision.plateThicknessMm, format: .number)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 90)
+                                .keyboardType(.decimalPad)
+                        }
+                        Text("板厚用于把缺陷实测尺寸换算为 ISO 5817 质量等级（B/C/D）。改此值会即时重评所有已标注缺陷。")
+                            .font(.caption2).foregroundStyle(.secondary)
+
+                        // 阶段2：检测引擎开关（AI 模型 / CV 规则回退）
+                        HStack {
+                            Image(systemName: "brain").foregroundStyle(.purple)
+                            Toggle("使用 AI 模型识别", isOn: $useMLModel)
+                                .font(.subheadline)
+                            Spacer()
+                            Text(MLDefectDetector.isModelAvailable ? "模型已加载" : "未加载→CV")
+                                .font(.caption2)
+                                .foregroundStyle(MLDefectDetector.isModelAvailable ? .green : .secondary)
+                        }
+                        .onChange(of: useMLModel) { _, v in MLDefectDetector.useMLModel = v }
                     }
 
-                    Text("已实施的焊趾改善措施").font(.subheadline.bold())
+                    SectionTitle(text: "焊趾改善措施", systemImage: "wrench.and.screwdriver")
                     ForEach(KnowledgeBank.improvements, id: \.method) { m in
                         Toggle(m.label, isOn: Binding(
                             get: { store.vision.improvementsApplied.contains(m.method) },
@@ -144,7 +195,7 @@ struct PhotoCheckView: View {
                     }
 
                     // 缺陷列表
-                    Text("表面缺陷（ISO 5817）").font(.subheadline.bold())
+                    SectionTitle(text: "表面缺陷（ISO 5817）", systemImage: "exclamationmark.triangle")
                     ForEach(Array(store.vision.imperfections.enumerated()), id: \.offset) { i, imp in
                         ImperfectionRow(
                             index: i,
@@ -163,7 +214,11 @@ struct PhotoCheckView: View {
                 }
                 .padding()
             }
+            .background(Theme.bgGradient.ignoresSafeArea())
             .navigationTitle("外观检查")
+            .navigationViewStyle(.stack)   // iPad 上强制单栏
+            // 板厚变化 → 重新评级所有已标注缺陷
+            .onChange(of: store.vision.plateThicknessMm) { _, _ in regradeAll() }
         }
         // LiDAR 测距 sheet（连续模式：自动列出所有未填尺寸的缺陷，逐一测距）
         .sheet(isPresented: Binding(
@@ -201,31 +256,58 @@ struct PhotoCheckView: View {
                 DispatchQueue.main.async {
                     store.photo = ui
                     calMode = false; calPts = []; annoMode = false
+                    // 若用户在「设计输入」填了非默认板厚，默认带入照片评级
+                    if store.vision.plateThicknessMm == 12 && store.design.plateThicknessMm != 12 {
+                        store.vision.plateThicknessMm = store.design.plateThicknessMm
+                    }
                     autoAnnotate(image: ui)
                 }
             }
         }
     }
 
-    /// 照片载入后自动检测缺陷区域，标注位置 + 尺寸（bbox + location）
+    /// 照片载入后自动检测缺陷区域，标注位置 + 尺寸（bbox + location），并按当前板厚做 ISO 5817 评级
     private func autoAnnotate(image: UIImage) {
-        let detects = PhotoDefectDetector.detect(in: image)
+        // 阶段2：优先 Core ML 实例分割，未加载模型时自动回退 CV 规则
+        let detects = MLDefectDetector.detect(in: image)
         // 清掉上一张照片留下的自动框（保留手动添加的缺陷）
         store.vision.imperfections.removeAll { $0.bbox != nil }
         let ppm = store.photoPxPerMm
+        let t = store.vision.plateThicknessMm
         for d in detects {
             let longPx = max(d.pixelSize.width, d.pixelSize.height)
             let sizeMm = ppm.map { Double(longPx) / $0 }
             let center = CGPoint(x: d.rect.midX, y: d.rect.midY)
-            store.vision.imperfections.append(
-                ImperfectionInput(type: d.type, sizeMm: sizeMm, poreMm: nil,
-                                  location: center, bbox: d.rect, pixelSize: d.pixelSize)
-            )
+            var imp = ImperfectionInput(type: d.type, sizeMm: sizeMm, poreMm: nil,
+                                        location: center, bbox: d.rect, pixelSize: d.pixelSize)
+            // 标定出 mm 且类型可判定时，立即评级
+            if let s = sizeMm, d.type != "defect" {
+                let g = ISO5817Grader.grade(type: d.type, sizeMm: s, t: t)
+                imp.grade = g.level; imp.accepted = g.accepted; imp.limitText = g.limitText
+            }
+            store.vision.imperfections.append(imp)
         }
+        let engine = MLDefectDetector.engineName
         store.autoState = detects.isEmpty
-            ? "未检测到明显视觉异常（启发式）。仍建议按 ISO 5817 做无损检测复核。"
-            : "已自动识别 \(detects.count) 处疑似缺陷，位置与尺寸已在照片上标注。" +
-              (ppm == nil ? " 点「📏 标定比例」设定参照长度后，尺寸将以 mm 显示。" : "")
+            ? "未检测到明显视觉异常（\(engine)）。仍建议按 ISO 5817 做无损检测复核。"
+            : "已自动识别 \(detects.count) 处疑似缺陷（\(engine)），位置与尺寸已在照片上标注。" +
+              (ppm == nil
+                ? " 点「📏 标定比例」设定参照长度后，尺寸以 mm 显示并自动评级。"
+                : " 已按板厚 \(String(format: "%.0f", t)) mm 做 ISO 5817 评级。")
+    }
+
+    /// 板厚变化后，重新评级所有已测得尺寸的缺陷
+    private func regradeAll() {
+        let t = store.vision.plateThicknessMm
+        for i in store.vision.imperfections.indices {
+            guard let s = store.vision.imperfections[i].sizeMm else { continue }
+            let type = store.vision.imperfections[i].type
+            guard type != "defect" else { continue }
+            let g = ISO5817Grader.grade(type: type, sizeMm: s, t: t)
+            store.vision.imperfections[i].grade = g.level
+            store.vision.imperfections[i].accepted = g.accepted
+            store.vision.imperfections[i].limitText = g.limitText
+        }
     }
 
     /// 标定完成：写入 pxPerMm，并把已有自动框的像素尺寸换算成 mm
@@ -236,7 +318,8 @@ struct PhotoCheckView: View {
                 store.vision.imperfections[i].sizeMm = Double(max(ps.width, ps.height)) / pxPerMm
             }
         }
-        store.autoState = "已标定（1 mm ≈ \(String(format: "%.2f", pxPerMm)) px）。自动框尺寸已按 mm 刷新。"
+        store.autoState = "已标定（1 mm ≈ \(String(format: "%.2f", pxPerMm)) px）。自动框尺寸已按 mm 刷新并重新评级。"
+        regradeAll()   // 标定换算出 mm 后，按当前板厚重评
     }
 }
 
@@ -252,47 +335,93 @@ struct ImperfectionRow: View {
     let onDelete: () -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
-            Picker("类型", selection: $store.vision.imperfections[index].type) {
-                Text("咬边").tag("undercut"); Text("气孔").tag("porosity")
-                Text("余高过大").tag("excess_weld_metal"); Text("焊瘤/满溢").tag("overlap")
-                Text("错边").tag("linear_misalignment")
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Picker("类型", selection: $store.vision.imperfections[index].type) {
+                    Text("咬边").tag("undercut"); Text("气孔").tag("porosity")
+                    Text("余高过大").tag("excess_weld_metal"); Text("焊瘤/满溢").tag("overlap")
+                    Text("错边").tag("linear_misalignment"); Text("裂纹/弧坑裂纹").tag("crack")
+                }
+                .frame(maxWidth: .infinity)
+                .onChange(of: store.vision.imperfections[index].type) { _, _ in regradeRow() }
+
+                TextField("尺寸mm", value: $store.vision.imperfections[index].sizeMm, format: .number)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 80)
+                    .keyboardType(.decimalPad)
+                    .onChange(of: store.vision.imperfections[index].sizeMm) { _, _ in regradeRow() }
+
+                // ISO 5817 等级徽章
+                if let g = store.vision.imperfections[index].grade {
+                    let ok = store.vision.imperfections[index].accepted ?? false
+                    Image(systemName: ok ? "checkmark.seal.fill" : "xmark.octagon.fill")
+                        .foregroundStyle(ok ? .green : .red)
+                        .help(store.vision.imperfections[index].limitText ?? "")
+                }
+
+                // LiDAR 测量按钮
+                Button(action: onMeasureTap) {
+                    Image(systemName: "scope")
+                        .imageScale(.medium)
+                        .foregroundStyle(isSelected ? .white : Theme.cyan)
+                        .padding(8)
+                        .background(isSelected ? Theme.cyan : Theme.cyan.opacity(0.12), in: Circle())
+                }
+                .accessibilityLabel("用 LiDAR 测距")
+                .help("启动 LiDAR 测距，自动填入真实 mm")
+
+                // 图上定位按钮（已定位时高亮）
+                Button(action: onLocateTap) {
+                    Image(systemName: isLocated ? "mappin.circle.fill" : "mappin.circle")
+                        .imageScale(.medium)
+                        .foregroundStyle(isLocated ? .red : .secondary)
+                        .padding(8)
+                        .background(isLocated ? Color.red.opacity(0.12) : Color.clear, in: Circle())
+                }
+                .accessibilityLabel("在照片上标注位置")
+                .help("开启「图上标注模式」后，点照片即可把此缺陷定位到该位置")
+
+                Button(action: onDelete) {
+                    Image(systemName: "trash").foregroundStyle(.red)
+                }
             }
-            .frame(maxWidth: .infinity)
 
-            TextField("尺寸mm", value: $store.vision.imperfections[index].sizeMm, format: .number)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 80)
-                .keyboardType(.decimalPad)
-
-            // LiDAR 测量按钮
-            Button(action: onMeasureTap) {
-                Image(systemName: "scope")
-                    .imageScale(.medium)
-                    .foregroundStyle(isSelected ? .white : .blue)
-                    .padding(8)
-                    .background(isSelected ? Color.blue : Color.blue.opacity(0.12), in: Circle())
-            }
-            .accessibilityLabel("用 LiDAR 测距")
-            .help("启动 LiDAR 测距，自动填入真实 mm")
-
-            // 图上定位按钮（已定位时高亮）
-            Button(action: onLocateTap) {
-                Image(systemName: isLocated ? "mappin.circle.fill" : "mappin.circle")
-                    .imageScale(.medium)
-                    .foregroundStyle(isLocated ? .red : .secondary)
-                    .padding(8)
-                    .background(isLocated ? Color.red.opacity(0.12) : Color.clear, in: Circle())
-            }
-            .accessibilityLabel("在照片上标注位置")
-            .help("开启「图上标注模式」后，点照片即可把此缺陷定位到该位置")
-
-            Button(action: onDelete) {
-                Image(systemName: "trash").foregroundStyle(.red)
+            // 评级说明（仅在有评级结果时显示）
+            if let g = store.vision.imperfections[index].grade,
+               let lt = store.vision.imperfections[index].limitText {
+                let ok = store.vision.imperfections[index].accepted ?? false
+                Text("ISO 5817 \(g)： \(lt)")
+                    .font(.caption2)
+                    .foregroundStyle(ok ? .green : .red)
             }
         }
         .padding(8)
-        .background(isSelected ? Color.blue.opacity(0.08) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+        .background(isSelected ? Theme.cyan.opacity(0.10) : Theme.panelGradient,
+                    in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10)
+            .stroke(Theme.cyan.opacity(isSelected ? 0.5 : 0.15), lineWidth: 1))
+    }
+
+    /// 该行尺寸或类型变化后，按当前板厚重评该缺陷
+    private func regradeRow() {
+        guard store.vision.imperfections.indices.contains(index) else { return }
+        let imp = store.vision.imperfections[index]
+        guard imp.type != "defect" else {
+            store.vision.imperfections[index].grade = nil
+            store.vision.imperfections[index].accepted = nil
+            store.vision.imperfections[index].limitText = nil
+            return
+        }
+        if let s = imp.sizeMm {
+            let g = ISO5817Grader.grade(type: imp.type, sizeMm: s, t: store.vision.plateThicknessMm)
+            store.vision.imperfections[index].grade = g.level
+            store.vision.imperfections[index].accepted = g.accepted
+            store.vision.imperfections[index].limitText = g.limitText
+        } else {
+            store.vision.imperfections[index].grade = nil
+            store.vision.imperfections[index].accepted = nil
+            store.vision.imperfections[index].limitText = nil
+        }
     }
 }
 
@@ -333,7 +462,8 @@ struct AnnotationPhotoView: View {
                         let sizeTxt = imp.sizeMm != nil
                             ? String(format: "%.1f mm", imp.sizeMm!)
                             : (longPx > 0 ? "\(Int(longPx)) px" : "")
-                        Text("#\(i + 1) \(AnnotationMarker.shortLabel(imp.type)) \(sizeTxt)")
+                        let gradeTxt = imp.grade.map { " \($0)" } ?? ""
+                        Text("#\(i + 1) \(AnnotationMarker.shortLabel(imp.type)) \(sizeTxt)\(gradeTxt)")
                             .font(.system(size: 11, weight: .bold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 5).padding(.vertical, 2)
@@ -470,6 +600,7 @@ struct LiDARCapabilityHint: View {
                 .foregroundStyle(.secondary)
         }
         .padding(8)
-        .background(.gray.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .background(Theme.panelGradient, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.cyan.opacity(0.15), lineWidth: 1))
     }
 }

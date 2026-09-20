@@ -11,7 +11,8 @@ struct ContentView: View {
             LoadsAndResultView().tabItem { Label("荷载/结果", systemImage: "function") }
             StandardsView().tabItem { Label("标准包", systemImage: "books.vertical") }
         }
-        .accentColor(.blue)
+        .accentColor(Theme.cyan)
+        .preferredColorScheme(.dark)
     }
 }
 
@@ -22,8 +23,9 @@ struct LoadsAndResultView: View {
         NavigationView {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    Text("③ 荷载参数（照片无法提供，须人工/仿真输入）")
-                        .font(.headline)
+                    SectionTitle(text: "③ 荷载参数", systemImage: "slider.horizontal.3")
+                    Text("照片无法提供，须人工/仿真输入")
+                        .font(.caption).foregroundStyle(Theme.textSecondary)
                     Picker("判定依据", selection: $store.mode) {
                         Text("综合：3D 定FAT+照片定缺陷").tag("both")
                         Text("仅照片").tag("photo")
@@ -37,17 +39,20 @@ struct LoadsAndResultView: View {
                     }
 
                     Button { store.run() } label: {
-                        Text("计算评估").frame(maxWidth: .infinity).padding(10)
+                        Label("计算评估", systemImage: "bolt.fill")
+                            .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(TechButtonStyle())
 
                     if let r = store.result {
-                        ResultView(result: r)
+                        ResultView(result: r).techCard(glow: true)
                     }
                 }
                 .padding()
             }
+            .background(Theme.bgGradient.ignoresSafeArea())
             .navigationTitle("荷载与结果")
+            .navigationViewStyle(.stack)   // iPad 上强制单栏，避免内容被当作侧边栏、右侧空白
         }
     }
 }

@@ -96,7 +96,20 @@ enum KnowledgeBank {
                      "D": IsoLimit(value: 0.2, ref: "t", maxAbs: 3.0)])
     ]
 
+    /// 查找细节类别；对旧版占位 ID 做兼容映射（避免数据升级后引用失效）
     static func findDetail(_ id: String) -> DetailCategory? {
-        details.first { $0.id == id }
+        if let d = details.first(where: { $0.id == id }) { return d }
+        if let mapped = legacyDetailAliases[id],
+           let d = details.first(where: { $0.id == mapped }) { return d }
+        return nil
     }
+
+    /// 旧版占位细节 ID → v5 校正版（表 8.4/8.5 权威 W 系列）映射
+    private static let legacyDetailAliases: [String: String] = [
+        "W_FILLET_TRANS_LC":  "W_CRUCIFORM_TOE_80",
+        "W_FILLET_TRANS_NLC": "W_TA_TRANS_71",
+        "W_FILLET_LONG":      "W_LA_LONG_50",
+        "W_COVER_END":        "W_COVER_END_80",
+        "W_STIFF_END":        "W_STIFF_WEB_71"
+    ]
 }

@@ -25,12 +25,12 @@ struct Model3DView: View {
                     Button { showPicker = true } label: {
                         Label("导入 3D 模型", systemImage: "folder.badge.plus")
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(TechButtonStyle())
                     if modelNode != nil {
                         Button { fillDesign() } label: {
                             Label("填入设计表单", systemImage: "arrow.down.doc")
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(TechButtonStyle(filled: false))
                     }
                 }
                 .padding(.horizontal)
@@ -63,12 +63,14 @@ struct Model3DView: View {
                     }
                 }
                 .frame(maxHeight: .infinity)
-                .background(Color(.secondarySystemBackground))
+                .background(Theme.panelBottom)
 
-                Text(status).font(.caption2).foregroundColor(.secondary)
+                Text(status).font(.caption2).foregroundStyle(Theme.textSecondary)
                     .padding(.horizontal)
             }
+            .background(Theme.bgGradient.ignoresSafeArea())
             .navigationTitle("3D 模型对比")
+            .navigationViewStyle(.stack)   // iPad 上强制单栏
             .fileImporter(isPresented: $showPicker, allowedContentTypes: allowedTypes) { result in
                 handlePicker(result)
             }
@@ -262,9 +264,10 @@ struct Model3DView: View {
 
     private func standardMaterial() -> SCNMaterial {
         let m = SCNMaterial()
-        m.diffuse.contents = UIColor.systemBlue
-        m.metalness.contents = 0.1
-        m.roughness.contents = 0.7
+        m.diffuse.contents = UIColor(red: 0.0, green: 0.85, blue: 1.0, alpha: 1.0)
+        m.metalness.contents = 0.6
+        m.roughness.contents = 0.35
+        m.emission.contents = UIColor(red: 0.0, green: 0.42, blue: 0.62, alpha: 1.0)
         m.isDoubleSided = true
         return m
     }

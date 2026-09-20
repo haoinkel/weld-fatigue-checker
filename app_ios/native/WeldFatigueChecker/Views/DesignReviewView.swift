@@ -12,9 +12,9 @@ struct DesignReviewView: View {
         NavigationView {
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("② 3D 设计合理性审查").font(.headline)
+                    SectionTitle(text: "② 3D 设计合理性审查", systemImage: "cube.transparent")
                     Text("填入从 3D 图 / CAD / LiDAR 识别的几何与传力属性，自动标出不合理细部并给改型建议。")
-                        .font(.caption).foregroundColor(.secondary)
+                        .font(.caption).foregroundStyle(Theme.textSecondary)
 
                     Picker("接头类型", selection: $store.design.jointType) {
                         Text("十字接头").tag("cruciform"); Text("T型接头").tag("t_joint")
@@ -46,7 +46,9 @@ struct DesignReviewView: View {
                 }
                 .padding()
             }
+            .background(Theme.bgGradient.ignoresSafeArea())
             .navigationTitle("3D 设计审查")
+            .navigationViewStyle(.stack)   // iPad 上强制单栏
         }
     }
 }
@@ -58,9 +60,15 @@ struct LabeledField: View {
     init(_ label: String, value: Binding<Double>) { self.label = label; self._value = value }
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.caption).foregroundColor(.secondary)
-            TextField(label, value: $value, format: .number).textFieldStyle(.roundedBorder)
+            Text(label).font(.caption).foregroundStyle(Theme.textSecondary)
+            TextField(label, value: $value, format: .number)
                 .keyboardType(.decimalPad)
+                .padding(8)
+                .background(Theme.panelTop, in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8)
+                    .stroke(Theme.cyan.opacity(0.30), lineWidth: 1))
+                .foregroundStyle(Theme.textPrimary)
+                .mono(15)
         }
     }
 }

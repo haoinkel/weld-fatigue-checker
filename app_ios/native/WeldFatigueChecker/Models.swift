@@ -38,6 +38,10 @@ struct ImperfectionInput {
     var bbox: CGRect? = nil
     // 缺陷在原图中的像素尺寸（宽/高）；用于标定后换算为 mm
     var pixelSize: CGSize? = nil
+    // 端侧 ISO 5817 评级结果（由 ISO5817Grader 在给定板厚 t 下判定）
+    var grade: String? = nil            // 等级 B / C / D，或 "✗" 表示超差不合格
+    var accepted: Bool? = nil           // 该实测尺寸在当前板厚下是否合格
+    var limitText: String? = nil        // 验收限值说明（如 "≤0.1t 且最大 1.0 mm"）
 }
 struct VisionInput {
     var jointType: String = "fillet"          // 照片识别的接头类型
@@ -46,6 +50,8 @@ struct VisionInput {
     var detailCandidate: String? = nil
     var improvementsApplied: [String] = []
     var imperfections: [ImperfectionInput] = []
+    // 母材厚度 mm：供自动评级（ISO 5817 限值含 t 比例项）；默认 12
+    var plateThicknessMm: Double = 12
 }
 
 // MARK: - 用户荷载参数

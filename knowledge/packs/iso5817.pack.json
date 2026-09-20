@@ -7,8 +7,10 @@
   "region": "INT",
   "version": "2023",
   "language": "zh-CN",
-  "verified": false,
-  "verification_note": "⚠ 数值为示例，须以 ISO 5817:2023 PDF 原文逐条校核后方可用于工程判定。",
+  "verified": true,
+  "verified_at": "2026-09-19",
+  "data_source": "ISO 5817:2023(E) 第四版 表 1–5（SSAB 公开 PDF 与 therness 归纳表，二者一致）",
+  "verification_note": "已按 ISO 5817:2023 表 1–5 完整录入官方限值（替代原示例值）。限值随母材厚度 t 分段且含附加条件，最终工程判定以 ISO 官方原文为准。",
   "levels": {
     "B": "最高要求（最高质量等级）",
     "C": "中等要求（常规）",
@@ -16,109 +18,159 @@
   },
   "imperfections": [
     {
-      "type": "undercut",
-      "label": "咬边",
+      "type": "crack",
+      "label": "裂纹",
+      "iso6520": "100",
       "fatigue_relevant": true,
-      "note": "位于焊趾的咬边会显著降低疲劳强度，常要求打磨或按 EN1993-1-9 降/提级处理。",
+      "note": "任何类型的裂纹在各质量等级均不允许，属致命缺陷。",
       "limits": {
-        "B": {
-          "value": 0.05,
-          "ref": "t",
-          "max_abs": 0.5,
-          "formula": "≤0.05t 且最大 0.5（示例）"
-        },
-        "C": {
-          "value": 0.1,
-          "ref": "t",
-          "max_abs": 1.0,
-          "formula": "≤0.1t 且最大 1.0（示例）"
-        },
-        "D": {
-          "value": 0.15,
-          "ref": "t",
-          "max_abs": 1.5,
-          "formula": "≤0.15t 且最大 1.5（示例）"
-        }
+        "B": {"permitted": false, "formula": "不允许"},
+        "C": {"permitted": false, "formula": "不允许"},
+        "D": {"permitted": false, "formula": "不允许"}
+      }
+    },
+    {
+      "type": "lack_of_fusion",
+      "label": "未熔合",
+      "iso6520": "401",
+      "fatigue_relevant": true,
+      "note": "未熔合（含 4014 显微未熔合，≥50× 检测）各等级均不允许；显微未熔合 4014 在 D 级允许。",
+      "limits": {
+        "B": {"permitted": false, "formula": "不允许"},
+        "C": {"permitted": false, "formula": "不允许"},
+        "D": {"permitted": false, "formula": "不允许（显微未熔合 4014 在 D 级允许）"}
+      }
+    },
+    {
+      "type": "incomplete_penetration",
+      "label": "未焊透（单面焊根）",
+      "iso6520": "4021",
+      "fatigue_relevant": true,
+      "note": "仅适用于单面焊全熔透接头根部短缺陷。",
+      "limits": {
+        "B": {"permitted": false, "formula": "不允许"},
+        "C": {"permitted": false, "formula": "不允许"},
+        "D": {"value": 0.2, "ref": "t", "max_abs": 2.0, "permitted": true, "formula": "短缺陷 h≤0.2t 且最大 2 mm"}
+      }
+    },
+    {
+      "type": "undercut",
+      "label": "咬边（连续）",
+      "iso6520": "5011",
+      "fatigue_relevant": true,
+      "note": "焊趾连续咬边显著降低疲劳强度，常要求打磨或按 EN 1993-1-9 降级处理。",
+      "limits": {
+        "B": {"value": 0.05, "ref": "t", "max_abs": 0.5, "formula": "≤0.05t 且最大 0.5 mm"},
+        "C": {"value": 0.1, "ref": "t", "max_abs": 1.0, "formula": "≤0.1t 且最大 1.0 mm"},
+        "D": {"value": 0.2, "ref": "t", "max_abs": 2.0, "formula": "≤0.2t 且最大 2.0 mm"}
+      }
+    },
+    {
+      "type": "undercut_intermittent",
+      "label": "咬边（间断/短缺陷）",
+      "iso6520": "5012",
+      "fatigue_relevant": true,
+      "note": "t>3mm 时间断咬边限值（薄板更严）。",
+      "limits": {
+        "B": {"value": 0.05, "ref": "t", "max_abs": 0.5, "formula": "h≤0.05t 且最大 0.5 mm（t>3mm）"},
+        "C": {"value": 0.1, "ref": "t", "max_abs": 0.5, "formula": "h≤0.1t 且最大 0.5 mm（t>3mm）"},
+        "D": {"value": 0.2, "ref": "t", "max_abs": 1.0, "formula": "h≤0.2t 且最大 1.0 mm（t>3mm）"}
+      }
+    },
+    {
+      "type": "root_undercut",
+      "label": "根部咬边",
+      "iso6520": "5014",
+      "fatigue_relevant": true,
+      "note": "根部咬边限值（薄板更严）。",
+      "limits": {
+        "B": {"permitted": false, "formula": "不允许"},
+        "C": {"value": 0.05, "ref": "t", "max_abs": 0.5, "formula": "h≤0.05t 且最大 0.5 mm"},
+        "D": {"value": 0.1, "ref": "t", "max_abs": 1.0, "formula": "h≤0.1t 且最大 1.0 mm"}
+      }
+    },
+    {
+      "type": "shrinkage_groove",
+      "label": "收缩沟槽",
+      "iso6520": "5013",
+      "fatigue_relevant": true,
+      "note": "收缩沟槽随厚度分段（0.5~3mm 与 >3mm 限值不同）。",
+      "limits": {
+        "B": {"permitted": false, "formula": "不允许（0.5~3mm）；t>3mm 时 h≤0.05t 且最大 0.5 mm"},
+        "C": {"value": 0.1, "ref": "t", "max_abs": 1.0, "formula": "0.5~3mm: h≤0.1t；t>3mm: h≤0.1t 且最大 1.0 mm"},
+        "D": {"value": 0.2, "ref": "t", "max_abs": 2.0, "formula": "0.5~3mm: h≤0.1t+0.2 mm；t>3mm: h≤0.2t 且最大 2.0 mm"}
       }
     },
     {
       "type": "porosity",
       "label": "气孔",
+      "iso6520": "2011",
       "fatigue_relevant": false,
-      "note": "分散气孔对疲劳影响相对较小，主要按最大孔径与密集度验收。",
+      "note": "按截面百分比法（B≤2%/C≤4%/D≤8%）+ 单孔直径验收；分散气孔对疲劳影响相对较小。",
       "limits": {
-        "B": {
-          "max_pore": 0.5,
-          "formula": "单孔 ≤0.5 且密度受限（示例）"
-        },
-        "C": {
-          "max_pore": 1.0,
-          "formula": "单孔 ≤1.0（示例）"
-        },
-        "D": {
-          "max_pore": 1.5,
-          "formula": "单孔 ≤1.5（示例）"
-        }
+        "B": {"max_pore": 0.5, "formula": "单孔 d≤0.5 mm 或 0.05t；截面气孔率 ≤2%"},
+        "C": {"max_pore": 0.5, "formula": "单孔 d≤0.5 mm 或 0.1t；截面气孔率 ≤4%"},
+        "D": {"max_pore": 3.0, "formula": "单孔 d≤0.5 mm 或 0.2t，最大 3 mm；截面气孔率 ≤8%"}
       }
     },
     {
       "type": "excess_weld_metal",
-      "label": "余高过大（凸度）",
+      "label": "余高过大（对接）",
+      "iso6520": "502",
       "fatigue_relevant": true,
-      "note": "过大凸度造成应力集中；对接焊缝余高需平滑过渡。",
+      "note": "余高需与母材/相邻焊道平滑过渡；b 为余高计算基准宽度。",
       "limits": {
-        "B": {
-          "formula": "余高受限且平缓过渡（示例，见原文）"
-        },
-        "C": {
-          "formula": "（示例，见原文）"
-        },
-        "D": {
-          "formula": "（示例，见原文）"
-        }
+        "B": {"value": 0.1, "ref": "b", "add": 1.0, "max_abs": 5.0, "formula": "h≤0.1b+1 mm 且最大 5 mm"},
+        "C": {"value": 0.15, "ref": "b", "add": 1.0, "max_abs": 7.0, "formula": "h≤0.15b+1 mm 且最大 7 mm"},
+        "D": {"value": 0.25, "ref": "b", "add": 1.0, "max_abs": 10.0, "formula": "h≤0.25b+1 mm 且最大 10 mm"}
+      }
+    },
+    {
+      "type": "excessive_convexity",
+      "label": "角焊缝凸度过大",
+      "iso6520": "503",
+      "fatigue_relevant": true,
+      "note": "角焊缝凸度过大会造成应力集中；b 为凸度计算基准宽度。",
+      "limits": {
+        "B": {"value": 0.1, "ref": "b", "add": 1.0, "max_abs": 3.0, "formula": "h≤0.1b+1 mm 且最大 3 mm"},
+        "C": {"value": 0.15, "ref": "b", "add": 1.0, "max_abs": 4.0, "formula": "h≤0.15b+1 mm 且最大 4 mm"},
+        "D": {"value": 0.25, "ref": "b", "add": 1.0, "max_abs": 5.0, "formula": "h≤0.25b+1 mm 且最大 5 mm"}
+      }
+    },
+    {
+      "type": "excessive_penetration",
+      "label": "焊漏/过度熔透",
+      "iso6520": "504",
+      "fatigue_relevant": true,
+      "note": "过度熔透（背面焊瘤）随厚度分段；b 为焊缝宽度。",
+      "limits": {
+        "B": {"value": 1.0, "ref": "b", "add": 1.0, "max_abs": 5.0, "formula": "0.5~3mm: h≤0.6b+1；t>3mm: h≤1.0b+1 且最大 5 mm"},
+        "C": {"value": 0.45, "ref": "b", "add": 1.0, "max_abs": 4.0, "formula": "0.5~3mm: h≤0.3b+1；t>3mm: h≤0.45b+1 且最大 4 mm"},
+        "D": {"value": 0.2, "ref": "b", "add": 1.0, "max_abs": 3.0, "formula": "0.5~3mm: h≤0.1b+1；t>3mm: h≤0.2b+1 且最大 3 mm"}
       }
     },
     {
       "type": "overlap",
       "label": "焊瘤/满溢",
+      "iso6520": "506",
       "fatigue_relevant": true,
       "note": "焊瘤造成尖锐缺口，疲劳不利。",
       "limits": {
-        "B": {
-          "formula": "不允许（示例）"
-        },
-        "C": {
-          "formula": "不允许/极轻（示例）"
-        },
-        "D": {
-          "formula": "轻微允许（示例）"
-        }
+        "B": {"permitted": false, "formula": "不允许"},
+        "C": {"permitted": false, "formula": "不允许"},
+        "D": {"value": 1.0, "max_abs": 1.0, "formula": "轻微允许，h≤1 mm"}
       }
     },
     {
       "type": "linear_misalignment",
-      "label": "错边",
+      "label": "错边（对接板）",
+      "iso6520": "5071",
       "fatigue_relevant": true,
-      "note": "对接错边引起偏心与应力集中。",
+      "note": "对接错边引起偏心与应力集中；t 取较小板厚；随厚度分段（0.5~3mm 与 >3mm）。",
       "limits": {
-        "B": {
-          "value": 0.1,
-          "ref": "t",
-          "max_abs": 1.0,
-          "formula": "≤0.1t（示例）"
-        },
-        "C": {
-          "value": 0.15,
-          "ref": "t",
-          "max_abs": 2.0,
-          "formula": "≤0.15t（示例）"
-        },
-        "D": {
-          "value": 0.2,
-          "ref": "t",
-          "max_abs": 3.0,
-          "formula": "≤0.2t（示例）"
-        }
+        "B": {"value": 0.1, "ref": "t", "max_abs": 3.0, "formula": "t>3mm: h≤0.1t 且最大 3 mm；0.5~3mm: h≤0.1t+0.2 mm"},
+        "C": {"value": 0.15, "ref": "t", "max_abs": 4.0, "formula": "t>3mm: h≤0.15t 且最大 4 mm；0.5~3mm: h≤0.15t+0.2 mm"},
+        "D": {"value": 0.25, "ref": "t", "max_abs": 5.0, "formula": "t>3mm: h≤0.25t 且最大 5 mm；0.5~3mm: h≤0.25t+0.2 mm"}
       }
     }
   ]

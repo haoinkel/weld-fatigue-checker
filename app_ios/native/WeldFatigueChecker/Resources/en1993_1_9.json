@@ -39,13 +39,21 @@
     {"id": "WS11a", "table": "8.2", "fat": 140, "stress_type": "normal", "name": "空心型材无起止点自动纵缝焊 t≤12.5mm（元件11）", "verified_from_ocr": true, "source": "OCR~995", "note": ""},
     {"id": "WS11b", "table": "8.2", "fat": 125, "stress_type": "normal", "name": "空心型材无起止点自动纵缝焊 t≥12.5mm（元件11）", "verified_from_ocr": true, "source": "OCR~1001", "note": ""},
 
-    {"id": "W_FILLET_TRANS_NLC", "table": "8.5/常识", "fat": 80, "stress_type": "normal", "name": "横向非承载角焊缝（附件，焊趾受拉）", "verified_from_ocr": false, "source": "通用焊接细节", "note": "最常用的横向角焊缝细节；焊趾打磨可提至 100/112/125。"},
-    {"id": "W_FILLET_TRANS_LC", "table": "8.5/常识", "fat": 80, "stress_type": "normal", "name": "横向承载角焊缝（十字接头，传力）", "verified_from_ocr": false, "source": "通用焊接细节", "note": "荷载通过焊缝传递。"},
-    {"id": "W_FILLET_LONG", "table": "8.5/常识", "fat": 71, "stress_type": "normal", "name": "纵向角焊缝（平行受力方向）", "verified_from_ocr": false, "source": "通用焊接细节", "note": "平行于应力方向的非承载角焊缝。"},
-    {"id": "W_BUTT_ASWELD", "table": "8.3/常识", "fat": 100, "stress_type": "normal", "name": "横向对接焊缝（焊态，外形良好）", "verified_from_ocr": false, "source": "通用焊接细节", "note": "全熔透；打磨齐平可提至 125。"},
-    {"id": "W_BUTT_GROUND", "table": "8.3/常识", "fat": 125, "stress_type": "normal", "name": "横向对接焊缝（打磨与母材齐平）", "verified_from_ocr": false, "source": "通用焊接细节", "note": "焊态 100，打磨齐平 125。"},
-    {"id": "W_COVER_END", "table": "8.5/常识", "fat": 80, "stress_type": "normal", "name": "盖板端部（横向）", "verified_from_ocr": false, "source": "通用焊接细节", "note": "部分规范取 63；以原文校核。"},
-    {"id": "W_STIFF_END", "table": "8.5/常识", "fat": 80, "stress_type": "normal", "name": "加劲肋端部（横向受拉）", "verified_from_ocr": false, "source": "通用焊接细节", "note": ""}
+    {"id": "W_TA_TRANS_71", "table": "8.4", "fat": 71, "stress_type": "normal", "name": "横向非承载角焊缝附件（L≤100mm，焊态）", "verified_from_ocr": true, "source": "EN1993-1-9 表8.4", "note": "Transverse fillet-welded attachment, L≤100mm；附件越长等级越低（长附件归入纵向附件系列）。焊趾打磨可提至 80。"},
+    {"id": "W_TA_TRANS_GROUND_80", "table": "8.4", "fat": 80, "stress_type": "normal", "name": "横向附件（焊缝端部仔细打磨消去咬边）", "verified_from_ocr": true, "source": "EN1993-1-9 表8.4 detail4", "note": "Transverse attachment, 焊缝端部打磨移除横向焊趾，FAT 80。"},
+    {"id": "W_LA_LONG_90", "table": "8.4", "fat": 90, "stress_type": "normal", "name": "纵向附件（光滑过渡半径 r/L≥1/3 或 r>150mm）", "verified_from_ocr": true, "source": "EN1993-1-9 表8.4 detail1 (AC:2009)", "note": "Longitudinal attachment with smooth transition radius; r/L≥1/3 → 90。"},
+    {"id": "W_LA_LONG_71", "table": "8.4", "fat": 71, "stress_type": "normal", "name": "纵向附件（1/6≤r/L≤1/3）", "verified_from_ocr": true, "source": "EN1993-1-9 表8.4 detail2", "note": "1/6≤r/L≤1/3 → 71。"},
+    {"id": "W_LA_LONG_50", "table": "8.4", "fat": 50, "stress_type": "normal", "name": "纵向附件（焊态，无过渡半径）", "verified_from_ocr": true, "source": "EN1993-1-9 表8.4 detail3", "note": "As-welded, no radius transition → 50。"},
+    {"id": "W_STIFF_WEB_71", "table": "8.4", "fat": 71, "stress_type": "normal", "name": "竖向/横向加劲肋焊于腹板或翼缘（焊态）", "verified_from_ocr": true, "source": "EN1993-1-9 表8.4 detail7/8", "note": "Vertical stiffener welded to girder web/flange；若焊于受拉翼缘且 principal stress 控制，见 W_STIFF_FLANGE_50。"},
+    {"id": "W_STIFF_FLANGE_50", "table": "8.4/8.5", "fat": 50, "stress_type": "normal", "name": "横向加劲肋焊于受拉翼缘（焊态）", "verified_from_ocr": true, "source": "EN1993-1-9 表8.4/8.5", "note": "Transverse stiffener welded to tension flange；bearing stiffener 同属此类。"},
+    {"id": "W_COVER_END_80", "table": "8.4", "fat": 80, "stress_type": "normal", "name": "盖板/补强板端部（横向，焊缝端部打磨）", "verified_from_ocr": true, "source": "EN1993-1-9 表8.4 detail6", "note": "Cover plate end, transverse, weld ends ground → 80；部分文献取 71/63，以原文校核。"},
+    {"id": "W_CRUCIFORM_TOE_80", "table": "8.5", "fat": 80, "stress_type": "normal", "name": "传力十字/T型接头（全熔透/部分熔透），焊趾失效", "verified_from_ocr": true, "source": "EN1993-1-9 表8.5 detail1/3", "note": "Load-carrying cruciform/Tee, toe failure in load-carrying plate；须同时按 W_CRUCIFORM_ROOT_36 评估根部。"},
+    {"id": "W_CRUCIFORM_ROOT_36", "table": "8.5", "fat": 36, "stress_type": "normal", "name": "传力十字/T型接头（部分熔透/角焊），根部失效", "verified_from_ocr": true, "source": "EN1993-1-9 表8.5 detail2/3", "note": "Root failure (partial penetration / fillet)；用修正名义应力，36*；与焊趾 80 双评估。"},
+    {"id": "W_LAPJOINT_45", "table": "8.5", "fat": 45, "stress_type": "normal", "name": "角焊搭接接头（横向传力，焊趾失效）", "verified_from_ocr": false, "source": "EN1993-1-9 表8.5 detail5", "note": "Fillet welded lap joint；FAT 随搭接板厚 t1 分级（约 50/45/40），厚度断点以标准原文核对；根部失效用 36* 双评估。"},
+    {"id": "W_OVERLAP_80", "table": "8.5", "fat": 80, "stress_type": "normal", "name": "重叠焊接接头（角焊，横向）", "verified_from_ocr": true, "source": "EN1993-1-9 表8.5 detail4", "note": "Overlapped welded joint, fillet；transverse。"},
+    {"id": "W_BUTT_ASWELD", "table": "8.3", "fat": 100, "stress_type": "normal", "name": "横向对接焊缝（焊态，外形良好）", "verified_from_ocr": true, "source": "EN1993-1-9 表8.3", "note": "全熔透；打磨齐平可提至 112/125（见 W_BUTT_GROUND）。"},
+    {"id": "W_BUTT_GROUND", "table": "8.3", "fat": 125, "stress_type": "normal", "name": "横向对接焊缝（打磨与母材齐平）", "verified_from_ocr": true, "source": "EN1993-1-9 表8.3", "note": "两面打磨与受力方向齐平 + 100% NDT → 125；焊态 100。"}
+
   ],
   "improvement_methods": [
     {"method": "toe_grinding", "label": "焊趾打磨", "factor": 1.3, "max_fat": 125, "note": "磨削焊趾圆滑过渡；可提 FAT。"},

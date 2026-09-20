@@ -15,22 +15,26 @@ struct Rule {
 
 enum DesignReviewer {
     /// 由几何/传力属性映射到 EN1993-1-9 细节 id
+    /// 注意：ID 与 v5 校正版数据（表 8.4/8.5 权威 W 系列）保持一致；
+    /// 旧占位 ID 经 KnowledgeBank.findDetail 的别名映射仍可解析。
     static func matchDetail(_ d: DesignInput) -> String? {
         switch (d.jointType, d.weldType, d.loadingDirection, d.loadCarrying) {
         case (_, "butt", _, _):
             return d.groundFlush ? "W_BUTT_GROUND" : "W_BUTT_ASWELD"
         case (_, "fillet", "longitudinal", _):
-            return "W_FILLET_LONG"
+            return "W_LA_LONG_50"          // 纵向附件（焊态）表8.4 detail3
         case (_, "fillet", "transverse", true):
-            return "W_FILLET_TRANS_LC"
+            return "W_CRUCIFORM_TOE_80"    // 传力十字/T型接头焊趾 表8.5
         case (_, "fillet", "transverse", false):
-            return "W_FILLET_TRANS_NLC"
+            return "W_TA_TRANS_71"         // 横向非承载附件 表8.4
         case ("t_joint", _, _, true), ("cruciform", _, _, true):
-            return "W_FILLET_TRANS_LC"
+            return "W_CRUCIFORM_TOE_80"
         case ("t_joint", _, _, false), ("cruciform", _, _, false):
-            return "W_FILLET_TRANS_NLC"
-        case ("corner", _, _, _), ("lap", _, _, _):
-            return "W_FILLET_TRANS_NLC"
+            return "W_TA_TRANS_71"
+        case ("corner", _, _, _):
+            return "W_TA_TRANS_71"
+        case ("lap", _, _, _):
+            return "W_LAPJOINT_45"         // 搭接接头 表8.5 detail5
         default:
             return nil
         }
@@ -213,7 +217,7 @@ enum DesignReviewer {
         } else {
             dr = reviewDesign(design); detailId = dr.detailId ?? vision.detailCandidate
         }
-        let fid = detailId ?? "W_FILLET_TRANS_NLC"
+        let fid = detailId ?? "W_TA_TRANS_71"
         let fc = FatigueEngine.constantAmplitudeCheck(fid, params.deltaSigma, params.nRequired,
                       improvements: vision.improvementsApplied, gammaMf: params.gammaMf)
         let imps = FatigueEngine.evaluateImperfections(params.thickness, params.qualityLevel, vision.imperfections)

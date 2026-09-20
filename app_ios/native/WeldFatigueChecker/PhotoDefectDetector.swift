@@ -105,6 +105,8 @@ struct PhotoDefectDetector {
             var type = "defect"
             if dark && aspect < 1.8 { type = "porosity" }
             else if bright { type = "excess_weld_metal" }
+            // 裂纹（含弧坑裂纹）：细长暗线，长宽比大；启发式，误报需模型提升
+            else if dark && aspect >= 4 { type = "crack" }
             else if dark && aspect >= 1.8 { type = "undercut" }
             let rect = CGRect(x: Double(b.x1) / Double(w), y: Double(b.y1) / Double(h),
                               width: Double(b.bw) / Double(w), height: Double(b.bh) / Double(h))

@@ -89,8 +89,13 @@ case "$1" in
     /usr/bin/codesign --remove-signature "build/Payload/$SCHEME.app" 2>/dev/null || true
     # 标准未签名 IPA：zip 保留符号链接（-y），结构为 Payload/App.app/...
     cd build
-    /usr/bin/zip -r -y -q "$SCHEME-unsigned.ipa" Payload
+    /usr/bin/zip -r -y -q raw.ipa Payload
     cd ..
+    # ⚠️ 关键：Xcode 把 Resources/ 作为 folder reference 编进 .app，侧载会触发
+    # iOS 26 "Missing bundle ID"（IXErrorDomain Code=13）。这里用已验证的脚本把
+    # .app/Resources/* 平铺到 .app/ 根、规范化 Info.plist，结构与通过的 v3 一致。
+    python3 "$(dirname "$0")/make_sideloadable_ipa.py" build/raw.ipa -o "build/$SCHEME-unsigned.ipa"
+    rm -f build/raw.ipa
     echo "== IPA 内容校验（前 20 行）=="
     /usr/bin/unzip -l "build/$SCHEME-unsigned.ipa" | head -n 20
     ls -lh "build/$SCHEME-unsigned.ipa"
