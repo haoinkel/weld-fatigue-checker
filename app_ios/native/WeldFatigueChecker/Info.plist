@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleDisplayName</key>
-    <string>焊缝疲劳检查</string>
+    <string>Weld Fatigue Checker</string>
     <key>CFBundleExecutable</key>
     <string>WeldFatigueChecker</string>
     <key>CFBundleIdentifier</key>
@@ -30,13 +30,13 @@
         <false/>
     </dict>
     <key>NSCameraUsageDescription</key>
-    <string>用于现场拍摄焊缝外观以进行疲劳合规检查</string>
+    <string>Used to capture weld photos for fatigue compliance check</string>
     <key>NSPhotoLibraryUsageDescription</key>
-    <string>用于从相册选取焊缝照片</string>
+    <string>Used to pick weld photos from library</string>
     <key>NSPhotoLibraryAddUsageDescription</key>
-    <string>用于保存检查报告</string>
+    <string>Used to save inspection reports</string>
     <key>NSFaceIDUsageDescription</key>
-    <string>用于保护检查记录</string>
+    <string>Used to protect inspection records</string>
     <key>UIFileSharingEnabled</key>
     <true/>
     <key>LSSupportsOpeningDocumentsInPlace</key>
