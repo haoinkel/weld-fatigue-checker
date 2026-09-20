@@ -27,6 +27,15 @@ VENDOR="$HERE/Vendor/OCCT"
 echo "== 检查依赖 =="
 command -v cmake >/dev/null 2>&1 || { echo "缺少 cmake，请先：brew install cmake"; exit 1; }
 command -v xcrun >/dev/null 2>&1 || { echo "缺少 Xcode 命令行工具，请先：xcode-select --install"; exit 1; }
+# OCCT 8.x 的 iOS 交叉编译必须用 ios-cmake 工具链（否则 CMAKE_SYSTEM_NAME=iOS 不注入 -framework Foundation，
+# 会导致 TKService 链接报 NSAutoreleasePool 未定义，并退化成 macOS 主机构建）
+command -v brew >/dev/null 2>&1 || { echo "缺少 Homebrew，iOS 交叉编译需要 ios-cmake"; exit 1; }
+if [ ! -f "$(brew --prefix ios-cmake 2>/dev/null)/ios.toolchain.cmake" ]; then
+  echo "安装 ios-cmake 工具链 ..."
+  brew install ios-cmake
+fi
+export TOOLCHAIN="$(brew --prefix ios-cmake)/ios.toolchain.cmake"
+echo "使用 iOS 工具链: $TOOLCHAIN"
 
 # 已有产物时直接跳过（CI 缓存命中场景）；OCCT_FORCE_BUILD=1 可强制重建
 if [ -f "$VENDOR/lib/libOCCT.a" ] && [ -f "$HERE/occt.xcconfig" ] && [ "${OCCT_FORCE_BUILD:-0}" != "1" ]; then
@@ -42,17 +51,14 @@ if [ ! -f "$SRC/CMakeLists.txt" ]; then
   tar -xzf /tmp/occt.tar.gz -C "$SRC" --strip-components=1
 fi
 
-SDK_IPHONE=$(xcrun --sdk iphoneos --show-sdk-path)
-SDK_SIM=$(xcrun --sdk iphonesimulator --show-sdk-path)
-
 build_one() {
-  local SYSROOT="$1" ARCH="$2" OUT="$3" DEST="$4"
-  echo "== 构建 $ARCH @ $SYSROOT =="
+  local PLAT="$1" OUT="$2" DEST="$3"
+  echo "== 构建 iOS($PLAT) @ $OUT =="
   mkdir -p "$OUT"
   cmake -S "$SRC" -B "$OUT" \
-    -DCMAKE_SYSTEM_NAME=iOS \
-    -DCMAKE_OSX_SYSROOT="$SYSROOT" \
-    -DCMAKE_OSX_ARCHITECTURES="$ARCH" \
+    -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
+    -DPLATFORM="$PLAT" \
+    -DENABLE_BITCODE=OFF -DENABLE_ARC=ON -DENABLE_VISIBILITY=OFF \
     -DCMAKE_INSTALL_PREFIX="$DEST" \
     -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_SHARED_LIBS=OFF \
@@ -65,12 +71,12 @@ build_one() {
   cmake --install "$OUT"
 }
 
-build_one "$SDK_IPHONE" "arm64"               "$HERE/build/occt-iphoneos" "$INSTALL/iphoneos"
-# CI 出 IPA 只需真机架构；设 OCCT_SKIP_SIM=1 跳过模拟器构建（省约一半时间）
+# CI 出 IPA 只需真机架构（OS64 = device arm64）；设 OCCT_SKIP_SIM=1 跳过模拟器（省约一半时间）
+build_one "OS64" "$HERE/build/occt-iphoneos" "$INSTALL/iphoneos"
 if [ "${OCCT_SKIP_SIM:-0}" = "1" ]; then
   echo "OCCT_SKIP_SIM=1：跳过模拟器架构（仅构建真机 arm64）"
 else
-  build_one "$SDK_SIM"    "arm64;x86_64"        "$HERE/build/occt-sim"      "$INSTALL/sim"
+  build_one "SIMULATORARM64" "$HERE/build/occt-sim" "$INSTALL/sim"
 fi
 
 echo "== 合并为单一静态库 libOCCT.a =="
