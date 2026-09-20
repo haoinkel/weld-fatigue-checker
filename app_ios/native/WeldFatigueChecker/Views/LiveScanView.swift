@@ -58,7 +58,7 @@ struct LiveScanView: View {
                     let by = offY + d.rect.minY * ihP
                     let bw = d.rect.width * iwP
                     let bh = d.rect.height * ihP
-                    let longPx = Int(max(d.pixelSize.width, d.pixelSize.height))
+                    let longPx = Int(defectMeasurePx(type: d.type, pixelSize: d.pixelSize))
                     ZStack(alignment: .bottom) {
                         Rectangle()
                             .stroke(Theme.cyan, lineWidth: 2)
@@ -130,7 +130,7 @@ struct LiveScanView: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
                             ForEach(Array(scanner.detections.enumerated()), id: \.offset) { i, d in
-                                let longPx = Int(max(d.pixelSize.width, d.pixelSize.height))
+                                let longPx = Int(defectMeasurePx(type: d.type, pixelSize: d.pixelSize))
                                 Text("#\(i+1) \(AnnotationMarker.shortLabel(d.type)) \(longPx)px")
                                     .font(.caption2).foregroundStyle(.black)
                                     .padding(.horizontal, 8).padding(.vertical, 4)

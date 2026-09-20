@@ -386,7 +386,7 @@ struct PhotoCheckView: View {
             }
             let sizeText: String = {
                 if let s = imp.sizeMm { return String(format: "%.2f mm", s) }
-                if let ps = imp.pixelSize { return "\(Int(max(ps.width, ps.height))) px（未标定）" }
+                if let ps = imp.pixelSize { return "\(Int(defectMeasurePx(type: imp.type, pixelSize: ps))) px（未标定）" }
                 return "未测量"
             }()
             kvRow("类型", AnnotationMarker.shortLabel(imp.type))
@@ -445,7 +445,8 @@ struct PhotoCheckView: View {
         let ppm = store.photoPxPerMm
         let t = store.vision.plateThicknessMm
         for d in detects {
-            let longPx = max(d.pixelSize.width, d.pixelSize.height)
+            // 余高/凸度按竖直(bbox 高)测量，其余取长边
+            let longPx = defectMeasurePx(type: d.type, pixelSize: d.pixelSize)
             let sizeMm = ppm.map { Double(longPx) / $0 }
             let center = CGPoint(x: d.rect.midX, y: d.rect.midY)
             var imp = ImperfectionInput(type: d.type, sizeMm: sizeMm, poreMm: nil,
@@ -485,7 +486,9 @@ struct PhotoCheckView: View {
         store.photoPxPerMm = pxPerMm
         for i in store.vision.imperfections.indices where store.vision.imperfections[i].bbox != nil {
             if let ps = store.vision.imperfections[i].pixelSize {
-                store.vision.imperfections[i].sizeMm = Double(max(ps.width, ps.height)) / pxPerMm
+                // 余高/凸度按竖直(bbox 高)换算，其余取长边
+                store.vision.imperfections[i].sizeMm =
+                    defectMeasurePx(type: store.vision.imperfections[i].type, pixelSize: ps) / pxPerMm
             }
         }
         store.autoState = "已标定（1 mm ≈ \(String(format: "%.2f", pxPerMm)) px）。自动框尺寸已按 mm 刷新并重新评级。"
@@ -631,7 +634,7 @@ struct AnnotationPhotoView: View {
                             .stroke(Color.orange, lineWidth: 2)
                             .frame(width: bw, height: bh)
                             .position(x: bx + bw / 2, y: by + bh / 2)
-                        let longPx = imp.pixelSize.map { max($0.width, $0.height) } ?? 0
+                        let longPx = imp.pixelSize.map { defectMeasurePx(type: imp.type, pixelSize: $0) } ?? 0
                         let sizeTxt = imp.sizeMm != nil
                             ? String(format: "%.1f mm", imp.sizeMm!)
                             : (longPx > 0 ? "\(Int(longPx)) px" : "")

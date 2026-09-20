@@ -27,6 +27,12 @@ echo "== 检查依赖 =="
 command -v cmake >/dev/null 2>&1 || { echo "缺少 cmake，请先：brew install cmake"; exit 1; }
 command -v xcrun >/dev/null 2>&1 || { echo "缺少 Xcode 命令行工具，请先：xcode-select --install"; exit 1; }
 
+# 已有产物时直接跳过（CI 缓存命中场景）；OCCT_FORCE_BUILD=1 可强制重建
+if [ -f "$VENDOR/lib/libOCCT.a" ] && [ -f "$HERE/occt.xcconfig" ] && [ "${OCCT_FORCE_BUILD:-0}" != "1" ]; then
+  echo "检测到 Vendor/OCCT/lib/libOCCT.a 已存在，跳过 OCCT 构建（OCCT_FORCE_BUILD=1 可强制重建）"
+  exit 0
+fi
+
 echo "== 拉取 OCCT ${OCCT_VER} 源码 =="
 mkdir -p "$SRC"
 if [ ! -f "$SRC/CMakeLists.txt" ]; then
@@ -65,7 +71,12 @@ build_one() {
 }
 
 build_one "$SDK_IPHONE" "arm64"               "$HERE/build/occt-iphoneos" "$INSTALL/iphoneos"
-build_one "$SDK_SIM"    "arm64;x86_64"        "$HERE/build/occt-sim"      "$INSTALL/sim"
+# CI 出 IPA 只需真机架构；设 OCCT_SKIP_SIM=1 跳过模拟器构建（省约一半时间）
+if [ "${OCCT_SKIP_SIM:-0}" = "1" ]; then
+  echo "OCCT_SKIP_SIM=1：跳过模拟器架构（仅构建真机 arm64）"
+else
+  build_one "$SDK_SIM"    "arm64;x86_64"        "$HERE/build/occt-sim"      "$INSTALL/sim"
+fi
 
 echo "== 合并为单一静态库 libOCCT.a =="
 mkdir -p "$VENDOR/lib"
