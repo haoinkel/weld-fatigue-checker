@@ -33,7 +33,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: app_ios/native/Vendor/OCCT
-          key: occt-8.0.1-ios-arm64-v1
+          key: occt-8.0.1-ios-arm64-v2
 
       # 构建 OCCT（启用 STEP/IGES 直读）。build.sh 检测到 Vendor/OCCT 后自动开启 USE_OCCT。
       - name: Build OCCT for iOS (enable STEP/IGES)
