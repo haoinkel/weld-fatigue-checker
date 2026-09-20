@@ -101,7 +101,7 @@ struct MLDefectDetector {
             case "mask":       maskMA = fv.featureValue.multiArrayValue
             case "label":
                 if let ma = fv.featureValue.multiArrayValue { labelMA = ma }
-                else if let s = fv.featureValue.stringValue { labelStr = s }
+                else if fv.featureValue.type == .string { labelStr = fv.featureValue.stringValue }
             default: break
             }
         }
