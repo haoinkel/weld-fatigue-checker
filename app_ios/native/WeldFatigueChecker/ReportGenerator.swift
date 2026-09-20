@@ -121,7 +121,9 @@ enum ReportGenerator {
 
     // MARK: - Word（HTML .doc；Word / Pages / WPS 均可打开）
 
-    static func buildWordHTML(_ r: AssessmentResult) -> String {
+    static func buildWordHTML(_ r: AssessmentResult,
+                               photo: UIImage? = nil,
+                               imperfections: [ImperfectionInput] = []) -> String {
         var s = """
         <html><head><meta charset="utf-8"><title>焊缝疲劳合规检查报告</title>
         <style>
