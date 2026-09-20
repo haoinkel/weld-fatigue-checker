@@ -29,12 +29,15 @@ command -v cmake >/dev/null 2>&1 || { echo "缺少 cmake，请先：brew install
 command -v xcrun >/dev/null 2>&1 || { echo "缺少 Xcode 命令行工具，请先：xcode-select --install"; exit 1; }
 # OCCT 8.x 的 iOS 交叉编译必须用 ios-cmake 工具链（否则 CMAKE_SYSTEM_NAME=iOS 不注入 -framework Foundation，
 # 会导致 TKService 链接报 NSAutoreleasePool 未定义，并退化成 macOS 主机构建）
-command -v brew >/dev/null 2>&1 || { echo "缺少 Homebrew，iOS 交叉编译需要 ios-cmake"; exit 1; }
-if [ ! -f "$(brew --prefix ios-cmake 2>/dev/null)/ios.toolchain.cmake" ]; then
-  echo "安装 ios-cmake 工具链 ..."
-  brew install ios-cmake
+# ios-cmake 是 GitHub 单文件项目（Homebrew 无此 formula），直接下载固定版本
+IOS_CMAKE_VER="4.6.0"
+TOOLCHAIN="$HERE/build/ios.toolchain.cmake"
+if [ ! -f "$TOOLCHAIN" ]; then
+  echo "下载 ios-cmake ${IOS_CMAKE_VER} 工具链 ..."
+  mkdir -p "$(dirname "$TOOLCHAIN")"
+  curl -fL "https://raw.githubusercontent.com/leetal/ios-cmake/${IOS_CMAKE_VER}/ios.toolchain.cmake" -o "$TOOLCHAIN"
 fi
-export TOOLCHAIN="$(brew --prefix ios-cmake)/ios.toolchain.cmake"
+grep -q "ios-cmake" "$TOOLCHAIN" 2>/dev/null || { echo "工具链文件无效，请检查下载"; exit 1; }
 echo "使用 iOS 工具链: $TOOLCHAIN"
 
 # 已有产物时直接跳过（CI 缓存命中场景）；OCCT_FORCE_BUILD=1 可强制重建
