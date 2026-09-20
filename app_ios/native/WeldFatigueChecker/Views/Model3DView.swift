@@ -70,11 +70,11 @@ struct Model3DView: View {
             }
             .background(Theme.bgGradient.ignoresSafeArea())
             .navigationTitle("3D 模型对比")
-            .navigationViewStyle(.stack)   // iPad 上强制单栏
             .fileImporter(isPresented: $showPicker, allowedContentTypes: allowedTypes) { result in
                 handlePicker(result)
             }
         }
+        .navigationViewStyle(.stack)   // iPad 上强制单栏（修饰符必须加在 NavigationView 上才生效）
     }
 
     private var allowedTypes: [UTType] {

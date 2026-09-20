@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ResultView: View {
     let result: AssessmentResult
+    @EnvironmentObject var store: Store
     @State private var shareURL: URL?
     @State private var showShare = false
     @State private var exportError: String?

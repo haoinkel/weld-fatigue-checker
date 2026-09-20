@@ -48,8 +48,8 @@ struct DesignReviewView: View {
             }
             .background(Theme.bgGradient.ignoresSafeArea())
             .navigationTitle("3D 设计审查")
-            .navigationViewStyle(.stack)   // iPad 上强制单栏
         }
+        .navigationViewStyle(.stack)   // iPad 上强制单栏（修饰符必须加在 NavigationView 上才生效）
     }
 }
 

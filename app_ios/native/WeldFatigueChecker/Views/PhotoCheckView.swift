@@ -5,7 +5,13 @@ import ARKit
 
 struct PhotoCheckView: View {
     @EnvironmentObject var store: Store
+    @Environment(\.horizontalSizeClass) private var hSize
     @State private var pickerItem: PhotosPickerItem?
+
+    // iPad 双栏：右栏当前选中查看的缺陷行
+    @State private var selectedImpIndex: Int?
+    // 照片画布实测宽度（用于按图片宽高比计算画布高度）
+    @State private var canvasW: CGFloat = 0
 
     // LiDAR 自动识别焊缝 sheet
     @State private var showLidarScan: Bool = false
@@ -30,59 +36,173 @@ struct PhotoCheckView: View {
     @State private var showLiveScan: Bool = false
 
     var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    SectionTitle(text: "① 焊缝外观检查", systemImage: "camera.viewfinder")
-                    Text("用 iPad 相机/相册选取焊缝照片，记录接头类型与表面缺陷。\n进阶：用 ARKit(LiDAR) 自动测得咬边/气孔等缺陷的真实尺寸，无需参照物。")
-                        .font(.caption).foregroundStyle(Theme.textSecondary)
-
-                    PhotosPicker(selection: $pickerItem, matching: .images) {
-                        Label("拍摄 / 选择照片", systemImage: "camera.fill")
-                            .frame(maxWidth: .infinity).padding(12)
-                            .foregroundStyle(.black)
-                            .background(LinearGradient(colors: [Theme.cyan, Theme.blue],
-                                                       startPoint: .leading, endPoint: .trailing),
-                                         in: Capsule())
-                            .shadow(color: Theme.cyan.opacity(0.35), radius: 10, y: 0)
-                    }
-                    .onChange(of: pickerItem) { _, newItem in loadPhoto(from: newItem) }
-
-                    // 激光雷达自动识别焊缝及缺陷（仅 LiDAR 设备可用）
-                    if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
-                        Button {
-                            showLidarScan = true
-                        } label: {
-                            Label("📡 LiDAR 自动识别焊缝", systemImage: "waveform")
-                                .frame(maxWidth: .infinity).padding(12)
-                                .foregroundStyle(.white)
-                                .background(LinearGradient(colors: [Color.orange, Color(red: 1, green: 0.5, blue: 0.1)],
-                                                           startPoint: .leading, endPoint: .trailing),
-                                            in: Capsule())
-                                .shadow(color: Color.orange.opacity(0.35), radius: 10, y: 0)
+        Group {
+            if hSize == .regular {
+                // iPad：双栏。左=操作与缺陷列表，右=照片大图+缺陷详情（点左侧缺陷行联动）
+                NavigationSplitView {
+                    sidebarContent
+                        .navigationTitle("外观检查")
+                        .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 460)
+                } detail: {
+                    detailContent
+                }
+            } else {
+                // iPhone：单栏（照片内联）
+                NavigationView {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 12) {
+                            headerSection
+                            actionButtons
+                            photoBlock
+                            formSection
                         }
-                        .sheet(isPresented: $showLidarScan) {
-                            LiDARWeldScanSheet().environmentObject(store)
-                        }
+                        .padding()
                     }
+                    .background(Theme.bgGradient.ignoresSafeArea())
+                    .navigationTitle("外观检查")
+                }
+                .navigationViewStyle(.stack)
+            }
+        }
+        .onChange(of: store.vision.plateThicknessMm) { _, _ in regradeAll() }
+        // LiDAR 测距 sheet（连续模式：自动列出所有未填尺寸的缺陷，逐一测距）
+        .sheet(isPresented: Binding(
+            get: { liDarTargetIndex >= 0 },
+            set: { if !$0 { liDarTargetIndex = -1 } }
+        )) {
+            if liDarTargetIndex >= 0 {
+                LiDARMeasureSheet(initialIndex: liDarTargetIndex)
+                    .environmentObject(store)
+            }
+        }
+        // 标定弹窗：输入参照物真实长度（mm）
+        .alert("标定参照物长度", isPresented: $showCalAlert) {
+            TextField("真实长度 (mm)", text: $calRealMm)
+                .keyboardType(.decimalPad)
+            Button("取消", role: .cancel) { calPts = [] }
+            Button("确定") {
+                if let img = store.photo, calPts.count == 2,
+                   let realMm = Double(calRealMm), realMm > 0 {
+                    let a = calPts[0], b = calPts[1]
+                    let px = hypot((b.x - a.x) * img.size.width, (b.y - a.y) * img.size.height)
+                    applyCalibration(pxPerMm: px / realMm)
+                }
+                calPts = []
+            }
+        } message: {
+            Text("请填入你刚才在照片上点选的两点之间的真实长度（毫米）。")
+        }
+    }
 
-                    // 实时相机预览识别（任意带摄像头的设备可用，不依赖 LiDAR）
-                    Button {
-                        showLiveScan = true
-                    } label: {
-                        Label("🎥 实时扫描识别", systemImage: "video.circle")
-                            .frame(maxWidth: .infinity).padding(12)
-                            .foregroundStyle(.white)
-                            .background(LinearGradient(colors: [Theme.violet, Color(red: 0.5, green: 0.3, blue: 1.0)],
-                                                       startPoint: .leading, endPoint: .trailing),
-                                         in: Capsule())
-                            .shadow(color: Theme.violet.opacity(0.35), radius: 10, y: 0)
-                    }
-                    .fullScreenCover(isPresented: $showLiveScan) {
-                        LiveScanView().environmentObject(store)
-                    }
+    // MARK: - iPad 双栏：左栏
 
-                    if let img = store.photo {
+    private var sidebarContent: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                headerSection
+                actionButtons
+                formSection
+            }
+            .padding()
+        }
+        .background(Theme.bgGradient.ignoresSafeArea())
+    }
+
+    // MARK: - iPad 双栏：右栏（照片大图 + 缺陷详情）
+
+    private var detailContent: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                SectionTitle(text: "照片标注与缺陷详情", systemImage: "photo.on.rectangle.angled")
+                if store.photo != nil {
+                    photoBlock
+                } else {
+                    VStack(spacing: 10) {
+                        Image(systemName: "photo.on.rectangle.angled")
+                            .font(.system(size: 44))
+                            .foregroundStyle(Theme.cyan.opacity(0.55))
+                        Text("在左侧点「拍摄 / 选择照片」导入焊缝照片后，这里会显示大图与缺陷标注。\n点左侧缺陷行，这里会显示该缺陷详情。")
+                            .font(.subheadline).foregroundStyle(Theme.textSecondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 60)
+                    .techCard()
+                }
+                selectedDefectSection
+            }
+            .padding()
+        }
+        .background(Theme.bgGradient.ignoresSafeArea())
+        .navigationTitle("照片详情")
+    }
+
+    // MARK: - 顶部说明
+
+    private var headerSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionTitle(text: "① 焊缝外观检查", systemImage: "camera.viewfinder")
+            Text("用 iPad 相机/相册选取焊缝照片，记录接头类型与表面缺陷。\n进阶：用 ARKit(LiDAR) 自动测得咬边/气孔等缺陷的真实尺寸，无需参照物。")
+                .font(.caption).foregroundStyle(Theme.textSecondary)
+        }
+    }
+
+    // MARK: - 拍照 / LiDAR / 实时扫描按钮
+
+    private var actionButtons: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            PhotosPicker(selection: $pickerItem, matching: .images) {
+                Label("拍摄 / 选择照片", systemImage: "camera.fill")
+                    .frame(maxWidth: .infinity).padding(12)
+                    .foregroundStyle(.black)
+                    .background(LinearGradient(colors: [Theme.cyan, Theme.blue],
+                                               startPoint: .leading, endPoint: .trailing),
+                                 in: Capsule())
+                    .shadow(color: Theme.cyan.opacity(0.35), radius: 10, y: 0)
+            }
+            .onChange(of: pickerItem) { _, newItem in loadPhoto(from: newItem) }
+
+            // 激光雷达自动识别焊缝及缺陷（仅 LiDAR 设备可用）
+            if ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) {
+                Button {
+                    showLidarScan = true
+                } label: {
+                    Label("📡 LiDAR 自动识别焊缝", systemImage: "waveform")
+                        .frame(maxWidth: .infinity).padding(12)
+                        .foregroundStyle(.white)
+                        .background(LinearGradient(colors: [Color.orange, Color(red: 1, green: 0.5, blue: 0.1)],
+                                                   startPoint: .leading, endPoint: .trailing),
+                                     in: Capsule())
+                        .shadow(color: Color.orange.opacity(0.35), radius: 10, y: 0)
+                }
+                .sheet(isPresented: $showLidarScan) {
+                    LiDARWeldScanSheet().environmentObject(store)
+                }
+            }
+
+            // 实时相机预览识别（任意带摄像头的设备可用，不依赖 LiDAR）
+            Button {
+                showLiveScan = true
+            } label: {
+                Label("🎥 实时扫描识别", systemImage: "video.circle")
+                    .frame(maxWidth: .infinity).padding(12)
+                    .foregroundStyle(.white)
+                    .background(LinearGradient(colors: [Theme.violet, Color(red: 0.5, green: 0.3, blue: 1.0)],
+                                               startPoint: .leading, endPoint: .trailing),
+                                 in: Capsule())
+                    .shadow(color: Theme.violet.opacity(0.35), radius: 10, y: 0)
+            }
+            .fullScreenCover(isPresented: $showLiveScan) {
+                LiveScanView().environmentObject(store)
+            }
+        }
+    }
+
+    // MARK: - 照片区（自动提示 + 标注开关 + 画布 + 提示）
+
+    @ViewBuilder
+    private var photoBlock: some View {
+        if let img = store.photo {
                         VStack(alignment: .leading, spacing: 6) {
                             // 自动识别提示
                             if !store.autoState.isEmpty {
@@ -129,10 +249,18 @@ struct PhotoCheckView: View {
                                     if calPts.count == 2 { calRealMm = ""; showCalAlert = true }
                                 }
                             )
-                            .frame(maxHeight: 440)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: canvasHeight(for: img))
+                            .background(
+                                GeometryReader { g in
+                                    Color.clear
+                                        .onAppear { canvasW = g.size.width }
+                                        .onChange(of: g.size.width) { _, nw in canvasW = nw }
+                                }
+                            )
                             .cornerRadius(12)
                             .overlay(RoundedRectangle(cornerRadius: 12)
-                                .stroke(calMode ? Color.blue : (annoMode ? Color.red : Color.clear), lineWidth: 2))
+                                .stroke(calMode ? Color.blue : (annoMode ? Color.red : Theme.cyan.opacity(0.25)), lineWidth: 2))
 
                             if calMode {
                                 Text(calPts.count == 0
@@ -146,11 +274,16 @@ struct PhotoCheckView: View {
                                      ? "点击照片，把位置标注到选中的缺陷 #\(annoTargetIndex + 1)；点击空白处取消选中。"
                                      : "点击照片任意位置即可新建一个带位置标注的缺陷；或先点缺陷行的 📍 再点照片，定位到指定缺陷。")
                                     .font(.caption).foregroundStyle(.secondary)
-                            }
+            }
                         }
                     }
+    }
 
-                    Group {
+    // MARK: - 表单：接头/荷载/板厚/检测引擎 + 改善措施 + 缺陷列表
+
+    private var formSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Group {
                         Picker("接头类型", selection: $store.vision.jointType) {
                             Text("角焊缝").tag("fillet"); Text("对接焊缝").tag("butt")
                             Text("T型接头").tag("t_joint"); Text("十字接头").tag("cruciform")
@@ -204,52 +337,86 @@ struct PhotoCheckView: View {
                             index: i,
                             isSelected: liDarTargetIndex == i,
                             isLocated: imp.location != nil,
+                            detailSelected: selectedImpIndex == i,
                             onMeasureTap: { liDarTargetIndex = i },
                             onLocateTap: { annoTargetIndex = (annoTargetIndex == i ? -1 : i) },
-                            onDelete: { store.removeImperfection(at: i) }
+                            onDelete: {
+                                store.removeImperfection(at: i)
+                                if selectedImpIndex == i { selectedImpIndex = nil }
+                            }
                         )
+                        .onTapGesture {
+                            selectedImpIndex = (selectedImpIndex == i ? nil : i)
+                        }
                     }
                     Button { store.addImperfection() } label: { Label("+ 添加缺陷", systemImage: "plus") }
                         .font(.caption)
 
                     // LiDAR 设备能力提示
                     LiDARCapabilityHint()
+        }
+    }
+
+    // MARK: - 右栏：选中缺陷的详情卡
+
+    @ViewBuilder
+    private var selectedDefectSection: some View {
+        if let i = selectedImpIndex, store.vision.imperfections.indices.contains(i) {
+            defectDetailCard(i)
+        } else {
+            Text("提示：点左侧缺陷行，这里会显示该缺陷的详细信息（类型 / 尺寸 / ISO 5817 评级 / 限值）。")
+                .font(.caption).foregroundStyle(Theme.textSecondary)
+        }
+    }
+
+    private func defectDetailCard(_ i: Int) -> some View {
+        let imp = store.vision.imperfections[i]
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("缺陷 #\(i + 1) 详情").font(.headline).foregroundStyle(Theme.textPrimary)
+                Spacer()
+                if let g = imp.grade {
+                    let ok = imp.accepted ?? false
+                    Text("ISO 5817 \(g)")
+                        .font(.caption.bold())
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background((ok ? Theme.ok : Theme.danger).opacity(0.18), in: Capsule())
+                        .foregroundStyle(ok ? Theme.ok : Theme.danger)
                 }
-                .padding()
             }
-            .background(Theme.bgGradient.ignoresSafeArea())
-            .navigationTitle("外观检查")
-            .navigationViewStyle(.stack)   // iPad 上强制单栏
-            // 板厚变化 → 重新评级所有已标注缺陷
-            .onChange(of: store.vision.plateThicknessMm) { _, _ in regradeAll() }
-        }
-        // LiDAR 测距 sheet（连续模式：自动列出所有未填尺寸的缺陷，逐一测距）
-        .sheet(isPresented: Binding(
-            get: { liDarTargetIndex >= 0 },
-            set: { if !$0 { liDarTargetIndex = -1 } }
-        )) {
-            if liDarTargetIndex >= 0 {
-                LiDARMeasureSheet(initialIndex: liDarTargetIndex)
-                    .environmentObject(store)
+            let sizeText: String = {
+                if let s = imp.sizeMm { return String(format: "%.2f mm", s) }
+                if let ps = imp.pixelSize { return "\(Int(max(ps.width, ps.height))) px（未标定）" }
+                return "未测量"
+            }()
+            kvRow("类型", AnnotationMarker.shortLabel(imp.type))
+            kvRow("实测尺寸", sizeText)
+            if let lt = imp.limitText { kvRow("验收限值", lt) }
+            kvRow("图上位置", imp.location.map { String(format: "x %.2f, y %.2f", $0.x, $0.y) } ?? "未标注")
+            if let ps = imp.pixelSize { kvRow("像素尺寸", "\(Int(ps.width)) × \(Int(ps.height)) px") }
+            if let ok = imp.accepted {
+                Text(ok ? "✓ 当前板厚下合格" : "✗ 当前板厚下超差")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(ok ? Theme.ok : Theme.danger)
             }
         }
-        // 标定弹窗：输入参照物真实长度（mm）
-        .alert("标定参照物长度", isPresented: $showCalAlert) {
-            TextField("真实长度 (mm)", text: $calRealMm)
-                .keyboardType(.decimalPad)
-            Button("取消", role: .cancel) { calPts = [] }
-            Button("确定") {
-                if let img = store.photo, calPts.count == 2,
-                   let realMm = Double(calRealMm), realMm > 0 {
-                    let a = calPts[0], b = calPts[1]
-                    let px = hypot((b.x - a.x) * img.size.width, (b.y - a.y) * img.size.height)
-                    applyCalibration(pxPerMm: px / realMm)
-                }
-                calPts = []
-            }
-        } message: {
-            Text("请填入你刚才在照片上点选的两点之间的真实长度（毫米）。")
+        .techCard(glow: true)
+    }
+
+    private func kvRow(_ k: String, _ v: String) -> some View {
+        HStack {
+            Text(k).font(.subheadline).foregroundStyle(Theme.textSecondary)
+            Spacer()
+            Text(v).font(.subheadline).foregroundStyle(Theme.textPrimary).mono()
         }
+    }
+
+    /// 按图片宽高比与画布实测宽度计算画布高度
+    /// （修复：GeometryReader 在 ScrollView 内只给 maxHeight 会高度塌陷，导致照片不可见、无法点按）
+    private func canvasHeight(for img: UIImage) -> CGFloat {
+        guard canvasW > 1 else { return 300 }
+        let aspect = img.size.height / max(img.size.width, 1)
+        return min(max(canvasW * aspect, 200), 480)
     }
 
     private func loadPhoto(from item: PhotosPickerItem?) {
@@ -333,6 +500,7 @@ struct ImperfectionRow: View {
     let index: Int
     let isSelected: Bool
     let isLocated: Bool
+    var detailSelected: Bool = false   // 右栏详情当前展示的行（高亮）
     let onMeasureTap: () -> Void
     let onLocateTap: () -> Void
     let onDelete: () -> Void
@@ -399,10 +567,12 @@ struct ImperfectionRow: View {
             }
         }
         .padding(8)
-        .background(isSelected ? AnyShapeStyle(Theme.cyan.opacity(0.10)) : AnyShapeStyle(Theme.panelGradient),
+        .background(isSelected || detailSelected
+                    ? AnyShapeStyle(Theme.cyan.opacity(0.14)) : AnyShapeStyle(Theme.panelGradient),
                     in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10)
-            .stroke(Theme.cyan.opacity(isSelected ? 0.5 : 0.15), lineWidth: 1))
+            .stroke(Theme.cyan.opacity(detailSelected ? 0.65 : (isSelected ? 0.5 : 0.15)),
+                    lineWidth: detailSelected ? 1.5 : 1))
     }
 
     /// 该行尺寸或类型变化后，按当前板厚重评该缺陷

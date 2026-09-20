@@ -8,21 +8,30 @@ enum ReportGenerator {
     // MARK: - 对外接口
 
     /// 生成 PDF 并写入临时文件，返回可分享的文件 URL
-    static func exportPDF(_ r: AssessmentResult, fileName: String = "焊缝疲劳评估报告.pdf") -> URL? {
-        let data = buildPDF(r)
+    /// photo/imperfections：外观检查照片与缺陷标注（非空时在报告中附「含标注照片」页）
+    static func exportPDF(_ r: AssessmentResult,
+                          photo: UIImage? = nil,
+                          imperfections: [ImperfectionInput] = [],
+                          fileName: String = "焊缝疲劳评估报告.pdf") -> URL? {
+        let data = buildPDF(r, photo: photo, imperfections: imperfections)
         return writeTemp(data: data, fileName: fileName)
     }
 
     /// 生成 Word（HTML .doc）并写入临时文件，返回可分享的文件 URL
-    static func exportWord(_ r: AssessmentResult, fileName: String = "焊缝疲劳评估报告.doc") -> URL? {
-        let html = buildWordHTML(r)
+    static func exportWord(_ r: AssessmentResult,
+                           photo: UIImage? = nil,
+                           imperfections: [ImperfectionInput] = [],
+                           fileName: String = "焊缝疲劳评估报告.doc") -> URL? {
+        let html = buildWordHTML(r, photo: photo, imperfections: imperfections)
         guard let data = html.data(using: .utf8) else { return nil }
         return writeTemp(data: data, fileName: fileName)
     }
 
     // MARK: - PDF 渲染（支持自动分页与折行）
 
-    static func buildPDF(_ r: AssessmentResult) -> Data {
+    static func buildPDF(_ r: AssessmentResult,
+                         photo: UIImage? = nil,
+                         imperfections: [ImperfectionInput] = []) -> Data {
         let fmt = UIGraphicsPDFRendererFormat()
         let page = CGRect(x: 0, y: 0, width: 595, height: 842) // A4 @72dpi
         let renderer = UIGraphicsPDFRenderer(bounds: page, format: fmt)
@@ -82,6 +91,23 @@ enum ReportGenerator {
                 line("\(imp.label)\(imp.fatigueRelevant ? " [疲劳相关]" : ""): \(st) | \(imp.limit)", 10)
             }
             line("")
+
+            // 外观检查照片（含缺陷标注）
+            if let annotated = AnnotatedPhotoRenderer.render(image: photo, imperfections: imperfections) {
+                line("【②a 外观检查照片（含缺陷标注）】", 13, bold: true)
+                line("橙色框 = 自动识别缺陷；红色圆点 = 人工标注位置。", 9, color: .systemGray)
+                let maxImgH: CGFloat = 460
+                let scaleF = min(w / annotated.size.width, maxImgH / annotated.size.height)
+                let dw = annotated.size.width * scaleF
+                let dh = annotated.size.height * scaleF
+                if y + dh > page.height - 40 {          // 换页
+                    ctx.beginPage()
+                    y = 40
+                }
+                annotated.draw(in: CGRect(x: left, y: y, width: dw, height: dh))
+                y += dh + 10
+                line("")
+            }
 
             line("【③ 改善建议（按优先级）】", 13, bold: true)
             for p in r.plan {
@@ -151,7 +177,15 @@ enum ReportGenerator {
             s += "</table>"
         }
 
-        s += "<h2>四、③ 改善建议（按优先级）</h2><table><tr><td>优先级</td><td>编号</td><td>问题</td><td>措施</td></tr>"
+        // 外观检查照片（含缺陷标注，内嵌 base64 JPEG）
+        if let annotated = AnnotatedPhotoRenderer.render(image: photo, imperfections: imperfections),
+           let jpeg = annotated.jpegData(compressionQuality: 0.75) {
+            s += "<h2>四、外观检查照片（含缺陷标注）</h2>"
+            s += "<img src=\"data:image/jpeg;base64,\(jpeg.base64EncodedString())\" style=\"width:100%;\"/>"
+            s += "<p class=\"note\">橙色框 = 自动识别缺陷；红色圆点 = 人工标注位置。</p>"
+        }
+
+        s += "<h2>五、③ 改善建议（按优先级）</h2><table><tr><td>优先级</td><td>编号</td><td>问题</td><td>措施</td></tr>"
         for p in r.plan {
             let tgt = p.raisesFatTo != nil ? "（目标FAT≈\(p.raisesFatTo!))" : ""
             s += "<tr><td>\(escape(p.priority))</td><td>\(escape(p.ruleId))</td><td>\(escape(p.title))</td>"
@@ -187,5 +221,68 @@ enum ReportGenerator {
         s.replacingOccurrences(of: "&", with: "&amp;")
             .replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;")
+    }
+}
+
+// MARK: - 带缺陷标注的照片渲染（用于 PDF / Word 报告）
+// 与 App 内 AnnotationPhotoView 的视觉语言一致：
+//   橙色框 = 自动识别缺陷（bbox + 类型 + 尺寸 + 等级）；红色圆点 = 人工标注位置。
+
+enum AnnotatedPhotoRenderer {
+
+    static func render(image: UIImage?, imperfections: [ImperfectionInput]) -> UIImage? {
+        guard let image, image.size.width > 0, image.size.height > 0 else { return nil }
+        let w = image.size.width, h = image.size.height
+        // 长边压到 1400pt，兼顾清晰度与 PDF/Word 体积
+        let k = min(1, 1400 / max(w, h))
+        let size = CGSize(width: w * k, height: h * k)
+        return UIGraphicsImageRenderer(size: size).image { ctx in
+            image.draw(in: CGRect(origin: .zero, size: size))
+            let cg = ctx.cgContext
+            for (i, imp) in imperfections.enumerated() {
+                if let bbox = imp.bbox {
+                    let r = CGRect(x: bbox.minX * size.width, y: bbox.minY * size.height,
+                                   width: bbox.width * size.width, height: bbox.height * size.height)
+                    cg.setStrokeColor(UIColor.systemOrange.cgColor)
+                    cg.setLineWidth(max(2, size.width * 0.004))
+                    cg.stroke(r.insetBy(dx: -1, dy: -1))
+                    var label = "#\(i + 1) \(AnnotationMarker.shortLabel(imp.type))"
+                    if let s = imp.sizeMm { label += String(format: " %.1f mm", s) }
+                    if let g = imp.grade { label += " \(g)" }
+                    drawChip(text: label, color: .systemOrange,
+                             at: CGPoint(x: r.midX, y: max(12, r.minY - 14)), in: ctx, size: size)
+                } else if let loc = imp.location {
+                    let p = CGPoint(x: loc.x * size.width, y: loc.y * size.height)
+                    let rad = max(11, size.width * 0.016)
+                    cg.setFillColor(UIColor.systemRed.cgColor)
+                    cg.fillEllipse(in: CGRect(x: p.x - rad, y: p.y - rad, width: rad * 2, height: rad * 2))
+                    cg.setStrokeColor(UIColor.white.cgColor)
+                    cg.setLineWidth(1.5)
+                    cg.strokeEllipse(in: CGRect(x: p.x - rad, y: p.y - rad, width: rad * 2, height: rad * 2))
+                    var label = "#\(i + 1) \(AnnotationMarker.shortLabel(imp.type))"
+                    if let s = imp.sizeMm { label += String(format: " %.1f mm", s) }
+                    drawChip(text: label, color: .systemRed,
+                             at: CGPoint(x: p.x, y: min(size.height - 12, p.y + rad + 12)), in: ctx, size: size)
+                }
+            }
+        }
+    }
+
+    /// 在指定中心点画一个带底色的标签条
+    private static func drawChip(text: String, color: UIColor, at center: CGPoint,
+                                 in ctx: UIGraphicsImageRendererContext, size: CGSize) {
+        let fontSize = max(11, size.width * 0.028)
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: UIFont.boldSystemFont(ofSize: fontSize), .foregroundColor: UIColor.white
+        ]
+        let ts = (text as NSString).size(withAttributes: attrs)
+        let pad: CGFloat = 4
+        let rect = CGRect(x: center.x - ts.width / 2 - pad,
+                          y: center.y - ts.height / 2 - pad,
+                          width: ts.width + pad * 2, height: ts.height + pad * 2)
+        let path = UIBezierPath(roundedRect: rect, cornerRadius: 4)
+        ctx.cgContext.setFillColor(color.withAlphaComponent(0.88).cgColor)
+        path.fill()
+        (text as NSString).draw(at: CGPoint(x: rect.minX + pad, y: rect.minY + pad), withAttributes: attrs)
     }
 }

@@ -96,7 +96,6 @@ struct StandardsView: View {
             .scrollContentBackground(.hidden)
             .background(Theme.bgGradient.ignoresSafeArea())
             .navigationTitle("标准包")
-            .navigationViewStyle(.stack)   // iPad 上强制单栏
             .onAppear(perform: reload)
             .onReceive(NotificationCenter.default.publisher(for: .standardsDidChange)) { _ in reload() }
             .fileImporter(isPresented: $showImporter,
@@ -116,6 +115,7 @@ struct StandardsView: View {
                 }
             }
         }
+        .navigationViewStyle(.stack)   // iPad 上强制单栏（修饰符必须加在 NavigationView 上才生效）
     }
 
     // MARK: - 逻辑
