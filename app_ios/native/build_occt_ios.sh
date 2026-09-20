@@ -17,8 +17,9 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 cd "$HERE"
 
-OCCT_VER="7.8.1"
-OCCT_TARBALL="https://github.com/Open-Cascade-SAS/OCCT/archive/refs/tags/V${OCCT_VER}.tar.gz"
+OCCT_VER="8.0.1"
+OCCT_TAG="V8_0_1"
+OCCT_TARBALL="https://github.com/Open-Cascade-SAS/OCCT/archive/refs/tags/${OCCT_TAG}.tar.gz"
 SRC="$HERE/build/occt-src"
 INSTALL="$HERE/build/occt-install"
 VENDOR="$HERE/Vendor/OCCT"
