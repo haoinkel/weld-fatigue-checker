@@ -90,46 +90,48 @@ struct MLDefectDetector {
         let handler = VNImageRequestHandler(cgImage: cg, options: [:])
         try handler.perform([request])
 
-        guard let obs = request.results?.first as? VNCoreMLFeatureProviderObservation else { return [] }
-        let fp = obs.featureProvider
-
-        // 取出三类输出（Create ML Instance Segmentation 标准字段）
-        guard let confVal = fp.featureValue(for: "confidence")?.multiArrayValue,
-              let maskVal  = fp.featureValue(for: "mask")?.multiArrayValue else {
-            return []   // label 缺失可容忍，但置信度/掩膜必须有
+        // 多输出实例分割：每个输出是 results 中的一个 VNCoreMLFeatureValueObservation，
+        // 通过 featureName 区分（Create ML 标准字段 confidence / mask / label）。
+        guard let results = request.results else { return [] }
+        var confMA: MLMultiArray?, maskMA: MLMultiArray?, labelMA: MLMultiArray?, labelStr: String?
+        for obs in results {
+            guard let fv = obs as? VNCoreMLFeatureValueObservation else { continue }
+            switch fv.featureName {
+            case "confidence": confMA = fv.featureValue.multiArrayValue
+            case "mask":       maskMA = fv.featureValue.multiArrayValue
+            case "label":
+                if let ma = fv.featureValue.multiArrayValue { labelMA = ma }
+                else if let s = fv.featureValue.stringValue { labelStr = s }
+            default: break
+            }
         }
+        guard let confVal = confMA, let maskVal = maskMA else { return [] }
         let count = Int(confVal.shape[0].intValue)
         guard count > 0 else { return [] }
 
         let imgW = cg.width, imgH = cg.height
-        // mask 形状 [N, H, W]（部分版本为 [N, H, W]，按行主序展开）
         let maskShape = maskVal.shape
         guard maskShape.count >= 3 else { return [] }
         let mH = Int(maskShape[1].intValue)
         let mW = Int(maskShape[2].intValue)
         let classLabels = (model.modelDescription.classLabels as? [String]) ?? []
 
-        // 取出 label（Int 索引序列，映射到 classLabels；缺失则按 type 默认）
-        let labelArr = fp.featureValue(for: "label")?.multiArrayValue
         let strideHW = mH * mW
-
         var cand: [(rect: CGRect, type: String, pixelSize: CGSize, score: Double)] = []
         for i in 0 ..< count {
             let score = confVal[i].doubleValue
             guard score >= confidenceThreshold else { continue }
 
-            // 类型映射：优先用 classLabels[idx]，否则尝试 label 字符串
             var type = "defect"
-            if let la = labelArr {
-                let idx = la[i].intValue
+            if let la = labelMA {
+                let idx = Int(la[i].intValue)
                 if !classLabels.isEmpty, idx >= 0, idx < classLabels.count {
                     type = labelMap[classLabels[idx].lowercased()] ?? "defect"
                 }
-            } else if let s = fp.featureValue(for: "label")?.stringValue {
+            } else if let s = labelStr {
                 type = labelMap[s.lowercased()] ?? "defect"
             }
 
-            // 从掩膜导出该实例的像素级 bbox，类型用解析后的 type、分数用置信度
             guard let box = bboxFromMask(maskVal, instance: i, base: i * strideHW,
                                          H: mH, W: mW, imgW: imgW, imgH: imgH) else { continue }
             cand.append((box.rect, type, box.pixelSize, score))
@@ -137,7 +139,9 @@ struct MLDefectDetector {
 
         // 非极大抑制（IoU>0.6 保留高分框），再截断 maxCount
         let kept = nms(candidates: cand, iouThresh: 0.6)
-        return Array(kept.prefix(maxCount))
+        return kept.prefix(maxCount).map { d in
+            DetectedDefect(rect: d.rect, type: d.type, pixelSize: d.pixelSize)
+        }
     }
 
     /// 从 [N,H,W] 概率掩膜的第 i 个实例提取像素级 bbox，并换算到原图归一化坐标与像素尺寸。

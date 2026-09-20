@@ -68,7 +68,7 @@ struct TechButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.headline)
-            .frame(maxWidth: .filled ? .infinity : nil)
+            .frame(maxWidth: filled ? .infinity : nil)
             .padding(.vertical, 12)
             .padding(.horizontal, filled ? 0 : 14)
             .foregroundStyle(filled ? Color.black : Theme.cyan)

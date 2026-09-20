@@ -26,6 +26,9 @@ struct PhotoCheckView: View {
     // 阶段2：检测引擎开关；true=优先 Core ML 模型（未加载时自动回退 CV）
     @State private var useMLModel: Bool = MLDefectDetector.useMLModel
 
+    // 实时相机扫描 sheet
+    @State private var showLiveScan: Bool = false
+
     var body: some View {
         NavigationView {
             ScrollView {
@@ -396,7 +399,7 @@ struct ImperfectionRow: View {
             }
         }
         .padding(8)
-        .background(isSelected ? Theme.cyan.opacity(0.10) : Theme.panelGradient,
+        .background(isSelected ? AnyShapeStyle(Theme.cyan.opacity(0.10)) : AnyShapeStyle(Theme.panelGradient),
                     in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10)
             .stroke(Theme.cyan.opacity(isSelected ? 0.5 : 0.15), lineWidth: 1))
