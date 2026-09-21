@@ -58,22 +58,10 @@ struct LiveScanView: View {
                 let vw = geo.size.width, vh = geo.size.height
                 let (iwP, ihP, offX, offY) = Self.aspectFill(imageAspect: a, viewW: vw, viewH: vh)
 
-                // 屏幕坐标 → 归一化图像坐标（原点左上，0..1），用于把拖拽框换算成 roi
-                func normOf(_ p: CGPoint) -> CGPoint {
-                    let nx = min(1, max(0, (p.x - offX) / iwP))
-                    let ny = min(1, max(0, (p.y - offY) / ihP))
-                    return CGPoint(x: nx, y: ny)
-                }
-                // 归一化 → 屏幕（供显示已框选的 roi）
-                func screenOf(_ r: CGRect) -> CGRect {
-                    CGRect(x: offX + r.minX * iwP, y: offY + r.minY * ihP,
-                           width: r.width * iwP, height: r.height * ihP)
-                }
-
                 ZStack {
                     // 已提交的焊缝区域（虚线黄）：区域外不检测
                     if let r = scanner.roi {
-                        let rs = screenOf(r)
+                        let rs = Self.screenOf(r, offX: offX, offY: offY, iwP: iwP, ihP: ihP)
                         Rectangle()
                             .stroke(Color.yellow, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
                             .frame(width: rs.width, height: rs.height)
@@ -88,10 +76,11 @@ struct LiveScanView: View {
 
                     // 拖拽中的框（实线黄）
                     if let s = roiStart, let c = roiCurrent {
-                        let n0 = normOf(s), n1 = normOf(c)
+                        let n0 = Self.normOf(s, offX: offX, offY: offY, iwP: iwP, ihP: ihP)
+                        let n1 = Self.normOf(c, offX: offX, offY: offY, iwP: iwP, ihP: ihP)
                         let rect = CGRect(x: min(n0.x, n1.x), y: min(n0.y, n1.y),
                                           width: abs(n1.x - n0.x), height: abs(n1.y - n0.y))
-                        let rs = screenOf(rect)
+                        let rs = Self.screenOf(rect, offX: offX, offY: offY, iwP: iwP, ihP: ihP)
                         Rectangle()
                             .stroke(Color.yellow, lineWidth: 2)
                             .frame(width: rs.width, height: rs.height)
@@ -123,7 +112,7 @@ struct LiveScanView: View {
                 }
                 // 框选手势：仅在 roiDrawing 模式下生效（拖拽定义焊缝区域）
                 .contentShape(Rectangle())
-                .gesture(DragGesture(minDistance: 0)
+                .gesture(DragGesture(minimumDistance: 0)
                     .onChanged { v in
                         guard roiDrawing else { return }
                         if roiStart == nil { roiStart = v.location }
@@ -131,7 +120,8 @@ struct LiveScanView: View {
                     }
                     .onEnded { v in
                         guard roiDrawing, let s = roiStart else { roiStart = nil; roiCurrent = nil; return }
-                        let n0 = normOf(s), n1 = normOf(v.location)
+                        let n0 = Self.normOf(s, offX: offX, offY: offY, iwP: iwP, ihP: ihP)
+                        let n1 = Self.normOf(v.location, offX: offX, offY: offY, iwP: iwP, ihP: ihP)
                         let rect = CGRect(x: min(n0.x, n1.x), y: min(n0.y, n1.y),
                                           width: abs(n1.x - n0.x), height: abs(n1.y - n0.y))
                         if rect.width > 0.02, rect.height > 0.02 {   // 太小视为误触
@@ -288,6 +278,19 @@ struct LiveScanView: View {
             iwP = viewW; ihP = viewW / a
         }
         return (iwP, ihP, (viewW - iwP) / 2, (viewH - ihP) / 2)
+    }
+
+    // 屏幕坐标 → 归一化图像坐标（原点左上，0..1），用于把拖拽框换算成 roi
+    private static func normOf(_ p: CGPoint, offX: CGFloat, offY: CGFloat,
+                               iwP: CGFloat, ihP: CGFloat) -> CGPoint {
+        CGPoint(x: min(1, max(0, (p.x - offX) / iwP)),
+                y: min(1, max(0, (p.y - offY) / ihP)))
+    }
+    // 归一化 → 屏幕（供显示已框选的 roi）
+    private static func screenOf(_ r: CGRect, offX: CGFloat, offY: CGFloat,
+                                 iwP: CGFloat, ihP: CGFloat) -> CGRect {
+        CGRect(x: offX + r.minX * iwP, y: offY + r.minY * ihP,
+               width: r.width * iwP, height: r.height * ihP)
     }
 
     /// 把当前帧与检测到的缺陷写入 store，回到照片视图继续标定/评级

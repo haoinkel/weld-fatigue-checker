@@ -261,12 +261,12 @@ struct PhotoCheckView: View {
                                 calMode: $calMode,
                                 calPts: $calPts,
                                 pxPerMm: store.photoPxPerMm,
-                                roiMode: $roiMode,
-                                weldSeamROI: $store.vision.weldSeamROI,
                                 onCalTap: { p in
                                     calPts.append(p)
                                     if calPts.count == 2 { calRealMm = ""; showCalAlert = true }
-                                }
+                                },
+                                roiMode: $roiMode,
+                                weldSeamROI: $store.vision.weldSeamROI
                             )
                             .frame(maxWidth: .infinity)
                             .frame(height: canvasHeight(for: img))
@@ -766,7 +766,7 @@ struct AnnotationPhotoView: View {
                 }
             }
             // 焊缝区域拖拽框选（仅在 roiMode 下挂接手势，避免影响标注/标定点按）
-            .gesture(roiMode ? DragGesture(minDistance: 0)
+            .gesture(roiMode ? DragGesture(minimumDistance: 0)
                 .updating($roiDrag) { v, st, _ in
                     if st == nil { st = (v.location, v.location) } else { st = (st!.0, v.location) }
                 }
