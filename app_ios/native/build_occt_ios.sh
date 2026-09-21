@@ -116,7 +116,10 @@ CLANG_CXX_LANGUAGE_STANDARD = gnu++17
 CLANG_CXX_LIBRARY = libc++
 HEADER_SEARCH_PATHS = $(inherited) "$VENDOR/include"
 LIBRARY_SEARCH_PATHS = $(inherited) "$VENDOR/lib"
-OTHER_LDFLAGS = $(inherited) -lOCCT -lc++ -ObjC
+// -force_load 关键：OCCT 的 STEP/IGES 读取器靠 C++ 静态初始化器向工厂注册，
+// 链接器会死代码剥离这些"无显式引用"的注册对象，导致运行时 ReadFile 找不到模式。
+// -ObjC 只对 ObjC 分类生效，对 C++ 静态库无效，必须用 -force_load 整体编入。
+OTHER_LDFLAGS = $(inherited) -lc++ -ObjC -force_load "$VENDOR/lib/libOCCT.a"
 GCC_PREPROCESSOR_DEFINITIONS = $(inherited) USE_OCCT=1
 EOF
 

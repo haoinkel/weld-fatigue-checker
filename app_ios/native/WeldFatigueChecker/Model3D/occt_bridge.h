@@ -31,6 +31,9 @@ OCCTMesh* occt_read_iges(const char* path);
 // 释放 occt_read_* 返回的网格（positions/normals/indices 一并释放）。
 void occt_free_mesh(OCCTMesh* mesh);
 
+// 返回上一次 occt_read_* 调用失败的具体原因（C 字符串，只读）。成功或首次调用返回空串。
+const char* occt_last_error(void);
+
 #ifdef __cplusplus
 }
 #endif

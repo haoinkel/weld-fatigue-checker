@@ -13,8 +13,18 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <cstdarg>
 #include <cmath>
 #include <vector>
+
+// 记录上一次读取失败的具体原因，供 Swift 端 UI 展示（只读）
+static char g_occt_err[256] = {0};
+static void occt_set_err(const char* fmt, ...) {
+    va_list ap; va_start(ap, fmt);
+    vsnprintf(g_occt_err, sizeof(g_occt_err), fmt, ap);
+    va_end(ap);
+}
+const char* occt_last_error(void) { return g_occt_err; }
 
 #if USE_OCCT
 #include <TopoDS_Shape.hxx>
@@ -30,7 +40,9 @@
 #include <gp_Trsf.hxx>
 #include <TopAbs_ShapeEnum.hxx>
 #include <STEPControl_Reader.hxx>
+#include <STEPControl_Controller.hxx>
 #include <IGESControl_Reader.hxx>
+#include <IGESControl_Controller.hxx>
 // IFSelect_RetDone 等返回状态枚举所在头文件（OCCT 无 IFSelect_Reader.hxx）
 #include <IFSelect_ReturnStatus.hxx>
 #endif
@@ -119,30 +131,48 @@ namespace {
 
 OCCTMesh* occt_read_step(const char* path) {
 #if USE_OCCT
-    if (!path) return nullptr;
+    g_occt_err[0] = '\0';
+    if (!path) { occt_set_err("路径为空"); return nullptr; }
+    STEPControl_Controller::Init();   // 注册 STEP 协议/单位；未初始化时 ReadFile 返回非 RetDone
     STEPControl_Reader reader;
-    if (reader.ReadFile(path) != IFSelect_RetDone) return nullptr;
+    IFSelect_ReturnStatus stat = reader.ReadFile(path);
+    if (stat != IFSelect_RetDone) {
+        occt_set_err("STEP ReadFile 返回 %d(非 RetDone，可能是 OCCT 读取器未注册或文件无法解析)", (int)stat);
+        return nullptr;
+    }
     reader.TransferRoots();
     TopoDS_Shape shape = reader.OneShape();
-    if (shape.IsNull()) return nullptr;
-    return buildMesh(shape);
+    if (shape.IsNull()) { occt_set_err("STEP 已读取，但 OneShape 为空(文件无实体几何)"); return nullptr; }
+    OCCTMesh* m = buildMesh(shape);
+    if (!m) occt_set_err("STEP 几何已加载，但三角网格生成失败(无三角面)");
+    return m;
 #else
     (void)path;
+    occt_set_err("USE_OCCT 未启用(请重新编译含 OCCT 的版本)");
     return nullptr;
 #endif
 }
 
 OCCTMesh* occt_read_iges(const char* path) {
 #if USE_OCCT
-    if (!path) return nullptr;
+    g_occt_err[0] = '\0';
+    if (!path) { occt_set_err("路径为空"); return nullptr; }
+    IGESControl_Controller::Init();   // 注册 IGES 协议；未初始化时 ReadFile 返回非 RetDone
     IGESControl_Reader reader;
-    if (reader.ReadFile(path) != IFSelect_RetDone) return nullptr;
+    IFSelect_ReturnStatus stat = reader.ReadFile(path);
+    if (stat != IFSelect_RetDone) {
+        occt_set_err("IGES ReadFile 返回 %d(非 RetDone，可能是 OCCT 读取器未注册或文件无法解析)", (int)stat);
+        return nullptr;
+    }
     reader.TransferRoots();
     TopoDS_Shape shape = reader.OneShape();
-    if (shape.IsNull()) return nullptr;
-    return buildMesh(shape);
+    if (shape.IsNull()) { occt_set_err("IGES 已读取，但 OneShape 为空"); return nullptr; }
+    OCCTMesh* m = buildMesh(shape);
+    if (!m) occt_set_err("IGES 几何已加载，但三角网格生成失败(无三角面)");
+    return m;
 #else
     (void)path;
+    occt_set_err("USE_OCCT 未启用(请重新编译含 OCCT 的版本)");
     return nullptr;
 #endif
 }

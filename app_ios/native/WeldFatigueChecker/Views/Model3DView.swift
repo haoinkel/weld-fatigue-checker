@@ -148,7 +148,12 @@ struct Model3DView: View {
 
     private func finishOCCT(_ mesh: UnsafeMutablePointer<OCCTMesh>?, _ err: inout String?, ext: String) -> SCNNode? {
         guard let m = mesh else {
-            err = "\(ext) 解析失败，或 OCCT 未启用。请先在 Mac 运行 build_occt_ios.sh 生成 Vendor/OCCT，再用 ./build.sh 重新编译（会自动开启 USE_OCCT）。"
+            let detail = String(cString: occt_last_error())
+            if !detail.isEmpty {
+                err = "\(ext) 解析失败：\(detail)"
+            } else {
+                err = "\(ext) 解析失败，或 OCCT 未启用。请先在 Mac 运行 build_occt_ios.sh 生成 Vendor/OCCT，再用 ./build.sh 重新编译（会自动开启 USE_OCCT）。"
+            }
             return nil
         }
         defer { occt_free_mesh(m) }
