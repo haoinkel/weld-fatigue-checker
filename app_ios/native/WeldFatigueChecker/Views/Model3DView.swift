@@ -329,11 +329,12 @@ struct Model3DSceneView: UIViewRepresentable {
         let center = SCNVector3((mn.x + mx.x) / 2, (mn.y + mx.y) / 2, (mn.z + mx.z) / 2)
         let size = max(mx.x - mn.x, max(mx.y - mn.y, mx.z - mn.z))
         let dist = max(size * 1.8, 0.1)
+        let distD = Double(dist)  // iOS 上 SCNVector3 分量是 Float，SCNCamera 的 zNear/zFar 是 Double
         let cam = SCNNode()
         let camera = SCNCamera()
         // 关键：模型是 mm 级（可达上万单位），SceneKit 默认 zFar=100 会把整个模型裁掉导致黑屏
-        camera.zNear = max(dist * 0.01, 0.01)
-        camera.zFar = dist * 10
+        camera.zNear = max(distD * 0.01, 0.01)
+        camera.zFar = distD * 10
         camera.wantsHDR = true
         cam.camera = camera
         cam.position = SCNVector3(center.x + dist, center.y + dist * 0.5, center.z + dist)
