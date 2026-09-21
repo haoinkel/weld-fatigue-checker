@@ -92,13 +92,26 @@ struct Model3DView: View {
                 return
             }
             defer { url.stopAccessingSecurityScopedResource() }
-            loadModel(url)
+            // 关键：安全作用域在 defer 处立即释放，而解析在后台线程异步进行。
+            // 必须在作用域内先把文件拷到 tmp，否则 OCCT 打不开原路径（ReadFile 返回 RetError=2）。
+            let name = url.lastPathComponent
+            let tmp = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathExtension(url.pathExtension)
+            do {
+                try? FileManager.default.removeItem(at: tmp)
+                try FileManager.default.copyItem(at: url, to: tmp)
+            } catch {
+                status = "复制文件到临时目录失败：\(error.localizedDescription)"
+                return
+            }
+            loadModel(tmp, displayName: name)
         }
     }
 
-    private func loadModel(_ url: URL) {
+    private func loadModel(_ url: URL, displayName: String) {
         let ext = url.pathExtension.lowercased()
-        status = "加载中：\(url.lastPathComponent) …"
+        status = "加载中：\(displayName) …"
         DispatchQueue.global(qos: .userInitiated).async {
             var node: SCNNode?
             var errMsg: String?
@@ -118,8 +131,8 @@ struct Model3DView: View {
                 if let n = node {
                     self.modelNode = n
                     self.bbox = sizes
-                    self.loadedName = url.lastPathComponent
-                    self.status = "已加载 \(url.lastPathComponent) ｜ 包围盒(假设 mm) X≈\(Int(sizes.0)) Y≈\(Int(sizes.1)) Z≈\(Int(sizes.2))"
+                    self.loadedName = displayName
+                    self.status = "已加载 \(displayName) ｜ 包围盒(假设 mm) X≈\(Int(sizes.0)) Y≈\(Int(sizes.1)) Z≈\(Int(sizes.2))"
                 } else {
                     self.status = errMsg ?? "加载失败"
                 }

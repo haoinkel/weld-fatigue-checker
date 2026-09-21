@@ -16,6 +16,8 @@
 #include <cstdarg>
 #include <cmath>
 #include <vector>
+#include <cstdio>
+#include <cerrno>
 
 // 记录上一次读取失败的具体原因，供 Swift 端 UI 展示（只读）
 static char g_occt_err[256] = {0};
@@ -133,6 +135,22 @@ OCCTMesh* occt_read_step(const char* path) {
 #if USE_OCCT
     g_occt_err[0] = '\0';
     if (!path) { occt_set_err("路径为空"); return nullptr; }
+    // 预检1：fopen 权限/存在性（沙盒权限被释放时在 fopen 一层就暴露，回传 errno）
+    FILE* fp = fopen(path, "rb");
+    if (!fp) {
+        occt_set_err("STEP 无法打开文件(errno=%d: %s)", errno, strerror(errno));
+        return nullptr;
+    }
+    // 预检2：STEP 文件头应为 ISO-10303-21（防止误选其他格式）
+    char head[32] = {0};
+    size_t nrd = fread(head, 1, 31, fp);
+    fclose(fp);
+    size_t off = 0;
+    while (off < nrd && (head[off]==' '||head[off]=='\t'||head[off]=='\r'||head[off]=='\n')) ++off;
+    if (off + 12 > nrd || strncmp(head + off, "ISO-10303-21", 12) != 0) {
+        occt_set_err("文件开头不是 ISO-10303-21(可能不是 STEP 文件): \"%.31s\"", head);
+        return nullptr;
+    }
     STEPControl_Controller::Init();   // 注册 STEP 协议/单位；未初始化时 ReadFile 返回非 RetDone
     STEPControl_Reader reader;
     IFSelect_ReturnStatus stat = reader.ReadFile(path);
@@ -157,6 +175,13 @@ OCCTMesh* occt_read_iges(const char* path) {
 #if USE_OCCT
     g_occt_err[0] = '\0';
     if (!path) { occt_set_err("路径为空"); return nullptr; }
+    // 预检：fopen 权限/存在性
+    FILE* fp = fopen(path, "rb");
+    if (!fp) {
+        occt_set_err("IGES 无法打开文件(errno=%d: %s)", errno, strerror(errno));
+        return nullptr;
+    }
+    fclose(fp);
     IGESControl_Controller::Init();   // 注册 IGES 协议；未初始化时 ReadFile 返回非 RetDone
     IGESControl_Reader reader;
     IFSelect_ReturnStatus stat = reader.ReadFile(path);
