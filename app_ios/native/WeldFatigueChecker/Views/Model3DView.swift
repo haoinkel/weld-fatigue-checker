@@ -304,16 +304,23 @@ struct Model3DView: View {
 struct Model3DSceneView: UIViewRepresentable {
     @Binding var node: SCNNode?
 
+    final class Coordinator { var attached: SCNNode? }
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
     func makeUIView(context: Context) -> SCNView {
         let view = SCNView()
         view.allowsCameraControl = true
         view.autoenablesDefaultLighting = true
+        view.antialiasingMode = .multisampling4X
         view.backgroundColor = .clear
         view.scene = SCNScene()
         return view
     }
 
     func updateUIView(_ view: SCNView, context: Context) {
+        // 只在模型真正变化时重建场景/相机；否则拖动透明度滑杆等状态刷新会重置用户视角
+        guard context.coordinator.attached !== node else { return }
+        context.coordinator.attached = node
         view.scene?.rootNode.childNodes.forEach { $0.removeFromParentNode() }
         guard let n = node else { return }
         view.scene?.rootNode.addChildNode(n)
@@ -323,9 +330,15 @@ struct Model3DSceneView: UIViewRepresentable {
         let size = max(mx.x - mn.x, max(mx.y - mn.y, mx.z - mn.z))
         let dist = max(size * 1.8, 0.1)
         let cam = SCNNode()
-        cam.camera = SCNCamera()
+        let camera = SCNCamera()
+        // 关键：模型是 mm 级（可达上万单位），SceneKit 默认 zFar=100 会把整个模型裁掉导致黑屏
+        camera.zNear = max(dist * 0.01, 0.01)
+        camera.zFar = dist * 10
+        camera.wantsHDR = true
+        cam.camera = camera
         cam.position = SCNVector3(center.x + dist, center.y + dist * 0.5, center.z + dist)
         cam.look(at: center)
         view.scene?.rootNode.addChildNode(cam)
+        view.pointOfView = cam
     }
 }
