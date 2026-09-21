@@ -40,6 +40,9 @@ final class RealtimeDefectScanner: NSObject, ObservableObject,
     /// 最近一帧（用于「捕获快照」写入报告）；同时记录其尺寸供叠层做 aspectFill 映射
     @Published var lastCapturedImage: UIImage? = nil
     @Published var frameSize: CGSize = CGSize(width: 720, height: 1280)
+    /// 焊缝区域闸门（归一化 0..1，由 LiveScanView 的「框选焊缝」写入）。
+    /// 为 nil 时不检测任何缺陷（避免扫描非焊缝物体误报余高等）；设置后只检测该区域内缺陷。
+    @Published var roi: CGRect? = nil
 
     // MARK: - 参数
     /// 单帧检测节流间隔（秒）：约 6.7 fps，足够实时预览且省电。
@@ -141,8 +144,16 @@ final class RealtimeDefectScanner: NSObject, ObservableObject,
         guard let pb = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         guard let (ui, size) = Self.uiImage(from: pb) else { return }
 
-        // 同一入口：模型可用走 Core ML，否则回退 CV 规则
-        let dets = MLDefectDetector.detect(in: ui, maxCount: 16)
+        // 焊缝区域闸门：未框选焊缝时不检测，避免非焊缝物体（高光/纹理）被误判为余高等缺陷
+        guard let roi = roi else {
+            DispatchQueue.main.async {
+                self.detections = []
+            }
+            return
+        }
+
+        // 同一入口：模型可用走 Core ML，否则回退 CV 规则（均按 roi 过滤）
+        let dets = MLDefectDetector.detect(in: ui, maxCount: 16, roi: roi)
 
         DispatchQueue.main.async {
             self.detections = dets

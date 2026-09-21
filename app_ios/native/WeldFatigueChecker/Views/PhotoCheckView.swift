@@ -29,6 +29,9 @@ struct PhotoCheckView: View {
     @State private var showCalAlert: Bool = false
     @State private var calRealMm: String = ""
 
+    // 焊缝区域(ROI)框选模式：在照片上拖拽出焊缝范围，检测只在该区域内生效
+    @State private var roiMode: Bool = false
+
     // 阶段2：检测引擎开关；true=优先 Core ML 模型（未加载时自动回退 CV）
     @State private var useMLModel: Bool = MLDefectDetector.useMLModel
 
@@ -65,6 +68,10 @@ struct PhotoCheckView: View {
             }
         }
         .onChange(of: store.vision.plateThicknessMm) { _, _ in regradeAll() }
+        // 焊缝区域(ROI)变化后，按新区域重新自动识别（框选即触发）
+        .onChange(of: store.vision.weldSeamROI) { _, _ in
+            if let img = store.photo { autoAnnotate(image: img) }
+        }
         // LiDAR 测距 sheet（连续模式：自动列出所有未填尺寸的缺陷，逐一测距）
         .sheet(isPresented: Binding(
             get: { liDarTargetIndex >= 0 },
@@ -227,6 +234,16 @@ struct PhotoCheckView: View {
                                     .background(calMode ? Theme.cyan : Theme.cyan.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
                                     .foregroundStyle(calMode ? .black : Theme.cyan)
                                 }
+                                Button {
+                                    roiMode.toggle()
+                                    if roiMode { annoMode = false; calMode = false; calPts = [] }
+                                } label: {
+                                Label("🎯 框选焊缝", systemImage: "viewfinder")
+                                    .font(.subheadline)
+                                    .padding(.horizontal, 8).padding(.vertical, 6)
+                                    .background(roiMode ? Color.green : Theme.cyan.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                                    .foregroundStyle(roiMode ? .black : Theme.cyan)
+                                }
                             }
                             if let ppm = store.photoPxPerMm {
                                 Text("已标定：1 mm ≈ \(ppm, specifier: "%.2f") px（自动框尺寸按 mm 显示）")
@@ -244,6 +261,8 @@ struct PhotoCheckView: View {
                                 calMode: $calMode,
                                 calPts: $calPts,
                                 pxPerMm: store.photoPxPerMm,
+                                roiMode: $roiMode,
+                                weldSeamROI: $store.vision.weldSeamROI,
                                 onCalTap: { p in
                                     calPts.append(p)
                                     if calPts.count == 2 { calRealMm = ""; showCalAlert = true }
@@ -273,6 +292,11 @@ struct PhotoCheckView: View {
                                 Text(annoTargetIndex >= 0 && annoTargetIndex < store.vision.imperfections.count
                                      ? "点击照片，把位置标注到选中的缺陷 #\(annoTargetIndex + 1)；点击空白处取消选中。"
                                      : "点击照片任意位置即可新建一个带位置标注的缺陷；或先点缺陷行的 📍 再点照片，定位到指定缺陷。")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            } else if roiMode {
+                                Text(store.vision.weldSeamROI == nil
+                                     ? "框选焊缝：在照片上拖拽出一个矩形框住焊缝范围。"
+                                     : "已框选焊缝区域，检测只在框内生效；可重新拖拽调整，或用「📏 标定比例」/LiDAR 量测得到 mm 后评级。")
                                     .font(.caption).foregroundStyle(.secondary)
             }
                         }
@@ -438,8 +462,15 @@ struct PhotoCheckView: View {
 
     /// 照片载入后自动检测缺陷区域，标注位置 + 尺寸（bbox + location），并按当前板厚做 ISO 5817 评级
     private func autoAnnotate(image: UIImage) {
-        // 阶段2：优先 Core ML 实例分割，未加载模型时自动回退 CV 规则
-        let detects = MLDefectDetector.detect(in: image)
+        // 焊缝区域闸门：未框选焊缝时不自动识别，避免把非焊缝区域（高光/纹理）误报为缺陷
+        guard let roi = store.vision.weldSeamROI else {
+            store.vision.imperfections.removeAll { $0.bbox != nil }
+            store.autoState = "未框选焊缝区域：已跳过自动识别，避免把非焊缝区域误报为缺陷。" +
+                "点照片上的「🎯 框选焊缝」拖拽出焊缝范围，或在 🎥 实时扫描中框选后捕获。"
+            return
+        }
+        // 阶段2：优先 Core ML 实例分割，未加载模型时自动回退 CV 规则（仅保留 roi 内缺陷）
+        let detects = MLDefectDetector.detect(in: image, roi: roi)
         // 清掉上一张照片留下的自动框（保留手动添加的缺陷）
         store.vision.imperfections.removeAll { $0.bbox != nil }
         let ppm = store.photoPxPerMm
@@ -612,6 +643,10 @@ struct AnnotationPhotoView: View {
     @Binding var calPts: [CGPoint]
     let pxPerMm: Double?
     var onCalTap: (CGPoint) -> Void = { _ in }
+    // 焊缝区域(ROI)框选
+    @Binding var roiMode: Bool
+    @Binding var weldSeamROI: CGRect?
+    @GestureState private var roiDrag: (CGPoint, CGPoint)? = nil
 
     var body: some View {
         GeometryReader { geo in
@@ -680,9 +715,37 @@ struct AnnotationPhotoView: View {
                         .background(Color.blue.opacity(0.9), in: RoundedRectangle(cornerRadius: 5))
                         .position(x: (ax + bx) / 2, y: (ay + by) / 2 - 12)
                 }
+
+                // 焊缝区域(ROI)叠层：已提交（绿虚线）+ 拖拽中（绿实线）
+                if let r = weldSeamROI {
+                    let rs = CGRect(x: rect.minX + r.minX * rect.width,
+                                    y: rect.minY + r.minY * rect.height,
+                                    width: r.width * rect.width, height: r.height * rect.height)
+                    Rectangle()
+                        .stroke(Color.green, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                        .frame(width: rs.width, height: rs.height)
+                        .position(x: rs.midX, y: rs.midY)
+                    Text("焊缝区域")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 5).padding(.vertical, 2)
+                        .background(Color.green.opacity(0.85), in: RoundedRectangle(cornerRadius: 5))
+                        .position(x: rs.midX, y: max(rect.minY + 12, rs.minY - 10))
+                }
+                if let drag = roiDrag {
+                    let n0 = CGPoint(x: min(drag.0.x, drag.1.x), y: min(drag.0.y, drag.1.y))
+                    let n1 = CGPoint(x: max(drag.0.x, drag.1.x), y: max(drag.0.y, drag.1.y))
+                    let rs = CGRect(x: n0.x, y: n0.y, width: n1.x - n0.x, height: n1.y - n0.y)
+                    Rectangle()
+                        .stroke(Color.green, lineWidth: 2)
+                        .frame(width: rs.width, height: rs.height)
+                        .position(x: rs.midX, y: rs.midY)
+                }
             }
             .contentShape(Rectangle())
             .onTapGesture { point in
+                // ROI 框选模式优先：忽略其它点按
+                guard !roiMode else { return }
                 guard rect.contains(point) else {
                     if annoMode && targetIndex >= 0 { targetIndex = -1 }
                     return
@@ -702,6 +765,21 @@ struct AnnotationPhotoView: View {
                     imperfections.append(ImperfectionInput(type: "undercut", sizeMm: nil, poreMm: nil, location: loc))
                 }
             }
+            // 焊缝区域拖拽框选（仅在 roiMode 下挂接手势，避免影响标注/标定点按）
+            .gesture(roiMode ? DragGesture(minDistance: 0)
+                .updating($roiDrag) { v, st, _ in
+                    if st == nil { st = (v.location, v.location) } else { st = (st!.0, v.location) }
+                }
+                .onEnded { v in
+                    let n0 = CGPoint(x: min(max(0, (v.location.x - rect.minX) / rect.width), 1),
+                                    y: min(max(0, (v.location.y - rect.minY) / rect.height), 1))
+                    let startPt = roiDrag?.0 ?? v.location
+                    let s0 = CGPoint(x: min(max(0, (startPt.x - rect.minX) / rect.width), 1),
+                                     y: min(max(0, (startPt.y - rect.minY) / rect.height), 1))
+                    let rr = CGRect(x: min(s0.x, n0.x), y: min(s0.y, n0.y),
+                                    width: abs(n0.x - s0.x), height: abs(n0.y - s0.y))
+                    if rr.width > 0.02, rr.height > 0.02 { weldSeamROI = rr }
+                } : nil)
         }
     }
 

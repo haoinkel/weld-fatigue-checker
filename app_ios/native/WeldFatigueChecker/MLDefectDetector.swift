@@ -53,12 +53,18 @@ struct MLDefectDetector {
     // MARK: - 入口
 
     /// 统一检测入口。模型可用且开启时走 ML，否则（或推理失败）回退 CV 规则。
-    static func detect(in image: UIImage, maxCount: Int = 16) -> [DetectedDefect] {
+    /// roi：焊缝区域（归一化 0..1）；传入时只保留中心落在 roi 内的缺陷，
+    ///      区域外不报（避免非焊缝物体误报）。nil 表示不限制（调用方负责闸门逻辑）。
+    static func detect(in image: UIImage, maxCount: Int = 16, roi: CGRect? = nil) -> [DetectedDefect] {
+        let applyROI: ([DetectedDefect]) -> [DetectedDefect] = { list in
+            guard let r = roi else { return list }
+            return list.filter { r.contains(CGPoint(x: $0.rect.midX, y: $0.rect.midY)) }
+        }
         if useMLModel, let url = compiledModelURL,
            let dets = try? runModel(at: url, image: image, maxCount: maxCount) {
-            return dets
+            return applyROI(dets)
         }
-        return PhotoDefectDetector.detect(in: image, maxCount: maxCount)
+        return applyROI(PhotoDefectDetector.detect(in: image, maxCount: maxCount))
     }
 
     /// 当前生效的引擎描述（用于自动标注提示文案）

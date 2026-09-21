@@ -52,6 +52,10 @@ struct VisionInput {
     var imperfections: [ImperfectionInput] = []
     // 母材厚度 mm：供自动评级（ISO 5817 限值含 t 比例项）；默认 12
     var plateThicknessMm: Double = 12
+    // 焊缝区域(ROI)：归一化矩形 0..1（原点左上）。缺陷检测只在该区域内生效：
+    // 区域外不报任何缺陷，避免扫描非焊缝物体时把高光/纹理误判为余高等缺陷。
+    // 余高(excess_weld_metal)为几何量，不应由 2D 亮度推断，应仅来自 LiDAR 剖面(WeldProfileAnalyzer)。
+    var weldSeamROI: CGRect? = nil
 }
 
 // MARK: - 用户荷载参数

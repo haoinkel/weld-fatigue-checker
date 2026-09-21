@@ -42,6 +42,11 @@ struct LiveScanView: View {
     @State private var useMLModel: Bool = MLDefectDetector.useMLModel
     @State private var captureMsg: String = ""
 
+    // 焊缝区域(ROI)框选：拖拽期间记录起止屏幕点；提交后写入 scanner.roi 与 store
+    @State private var roiDrawing: Bool = false
+    @State private var roiStart: CGPoint?
+    @State private var roiCurrent: CGPoint?
+
     var body: some View {
         ZStack {
             CameraPreview(session: scanner.session)
@@ -53,27 +58,89 @@ struct LiveScanView: View {
                 let vw = geo.size.width, vh = geo.size.height
                 let (iwP, ihP, offX, offY) = Self.aspectFill(imageAspect: a, viewW: vw, viewH: vh)
 
-                ForEach(Array(scanner.detections.enumerated()), id: \.offset) { _, d in
-                    let bx = offX + d.rect.minX * iwP
-                    let by = offY + d.rect.minY * ihP
-                    let bw = d.rect.width * iwP
-                    let bh = d.rect.height * ihP
-                    let longPx = Int(defectMeasurePx(type: d.type, pixelSize: d.pixelSize))
-                    ZStack(alignment: .bottom) {
+                // 屏幕坐标 → 归一化图像坐标（原点左上，0..1），用于把拖拽框换算成 roi
+                func normOf(_ p: CGPoint) -> CGPoint {
+                    let nx = min(1, max(0, (p.x - offX) / iwP))
+                    let ny = min(1, max(0, (p.y - offY) / ihP))
+                    return CGPoint(x: nx, y: ny)
+                }
+                // 归一化 → 屏幕（供显示已框选的 roi）
+                func screenOf(_ r: CGRect) -> CGRect {
+                    CGRect(x: offX + r.minX * iwP, y: offY + r.minY * ihP,
+                           width: r.width * iwP, height: r.height * ihP)
+                }
+
+                ZStack {
+                    // 已提交的焊缝区域（虚线黄）：区域外不检测
+                    if let r = scanner.roi {
+                        let rs = screenOf(r)
                         Rectangle()
-                            .stroke(Theme.cyan, lineWidth: 2)
-                            .shadow(color: Theme.cyan.opacity(0.8), radius: 4, y: 0)
-                            .frame(width: bw, height: bh)
-                        Text("\(AnnotationMarker.shortLabel(d.type))  \(longPx)px")
+                            .stroke(Color.yellow, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                            .frame(width: rs.width, height: rs.height)
+                            .position(x: rs.midX, y: rs.midY)
+                        Text("焊缝区域")
                             .font(.system(size: 11, weight: .bold))
                             .foregroundStyle(.black)
                             .padding(.horizontal, 5).padding(.vertical, 2)
-                            .background(Theme.cyan.opacity(0.9),
-                                         in: RoundedRectangle(cornerRadius: 5))
-                            .offset(y: -bh - 2)
+                            .background(Color.yellow.opacity(0.9), in: RoundedRectangle(cornerRadius: 5))
+                            .position(x: rs.midX, y: max(offY + 12, rs.minY - 10))
                     }
-                    .position(x: bx + bw / 2, y: by + bh / 2)
+
+                    // 拖拽中的框（实线黄）
+                    if let s = roiStart, let c = roiCurrent {
+                        let n0 = normOf(s), n1 = normOf(c)
+                        let rect = CGRect(x: min(n0.x, n1.x), y: min(n0.y, n1.y),
+                                          width: abs(n1.x - n0.x), height: abs(n1.y - n0.y))
+                        let rs = screenOf(rect)
+                        Rectangle()
+                            .stroke(Color.yellow, lineWidth: 2)
+                            .frame(width: rs.width, height: rs.height)
+                            .position(x: rs.midX, y: rs.midY)
+                    }
+
+                    // 实时缺陷框（仅在 roi 内）
+                    ForEach(Array(scanner.detections.enumerated()), id: \.offset) { _, d in
+                        let bx = offX + d.rect.minX * iwP
+                        let by = offY + d.rect.minY * ihP
+                        let bw = d.rect.width * iwP
+                        let bh = d.rect.height * ihP
+                        let longPx = Int(defectMeasurePx(type: d.type, pixelSize: d.pixelSize))
+                        ZStack(alignment: .bottom) {
+                            Rectangle()
+                                .stroke(Theme.cyan, lineWidth: 2)
+                                .shadow(color: Theme.cyan.opacity(0.8), radius: 4, y: 0)
+                                .frame(width: bw, height: bh)
+                            Text("\(AnnotationMarker.shortLabel(d.type))  \(longPx)px")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(.black)
+                                .padding(.horizontal, 5).padding(.vertical, 2)
+                                .background(Theme.cyan.opacity(0.9),
+                                             in: RoundedRectangle(cornerRadius: 5))
+                                .offset(y: -bh - 2)
+                        }
+                        .position(x: bx + bw / 2, y: by + bh / 2)
+                    }
                 }
+                // 框选手势：仅在 roiDrawing 模式下生效（拖拽定义焊缝区域）
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minDistance: 0)
+                    .onChanged { v in
+                        guard roiDrawing else { return }
+                        if roiStart == nil { roiStart = v.location }
+                        roiCurrent = v.location
+                    }
+                    .onEnded { v in
+                        guard roiDrawing, let s = roiStart else { roiStart = nil; roiCurrent = nil; return }
+                        let n0 = normOf(s), n1 = normOf(v.location)
+                        let rect = CGRect(x: min(n0.x, n1.x), y: min(n0.y, n1.y),
+                                          width: abs(n1.x - n0.x), height: abs(n1.y - n0.y))
+                        if rect.width > 0.02, rect.height > 0.02 {   // 太小视为误触
+                            scanner.roi = rect
+                            store.vision.weldSeamROI = rect
+                        }
+                        roiStart = nil; roiCurrent = nil
+                        roiDrawing = false
+                    })
             }
 
             // 顶部状态条
@@ -110,6 +177,44 @@ struct LiveScanView: View {
                         .font(.caption).foregroundStyle(.white)
                         .padding(8)
                         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+                }
+
+                // 焊缝区域闸门（ROI）
+                HStack {
+                    Button {
+                        if roiDrawing { roiDrawing = false; roiStart = nil; roiCurrent = nil }
+                        else { roiDrawing = true }
+                    } label: {
+                        Label(roiDrawing ? "框选中…拖拽" : "🎯 框选焊缝", systemImage: "viewfinder")
+                            .font(.subheadline)
+                            .padding(.horizontal, 8).padding(.vertical, 6)
+                            .background(roiDrawing ? Color.yellow : Theme.cyan.opacity(0.12),
+                                         in: RoundedRectangle(cornerRadius: 8))
+                            .foregroundStyle(roiDrawing ? .black : Theme.cyan)
+                    }
+                    if scanner.roi != nil {
+                        Button {
+                            scanner.roi = nil
+                            store.vision.weldSeamROI = nil
+                        } label: {
+                            Label("清除", systemImage: "xmark")
+                                .font(.subheadline)
+                                .padding(.horizontal, 8).padding(.vertical, 6)
+                                .background(Color.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                                .foregroundStyle(.red)
+                        }
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 8)
+
+                if scanner.roi == nil {
+                    Text("未框选焊缝区域：暂不检测任何缺陷（避免把非焊缝物体误报为余高）。点「🎯 框选焊缝」在预览上拖拽出焊缝范围。")
+                        .font(.caption2).foregroundStyle(.orange)
+                        .padding(6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+                        .padding(.horizontal, 8)
                 }
 
                 // 引擎开关 + 实时缺陷数
@@ -161,7 +266,11 @@ struct LiveScanView: View {
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
         }
         .statusBarHidden(true)
-        .onAppear { scanner.start() }
+        .onAppear {
+            scanner.start()
+            // 沿用之前已框选的焊缝区域（若用户已在照片或上次扫描中框选过）
+            scanner.roi = store.vision.weldSeamROI
+        }
         .onDisappear { scanner.stop() }
     }
 

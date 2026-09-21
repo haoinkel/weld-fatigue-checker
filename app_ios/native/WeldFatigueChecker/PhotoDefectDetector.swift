@@ -23,8 +23,10 @@ func defectMeasurePx(type: String, pixelSize: CGSize) -> Double {
 }
 
 struct PhotoDefectDetector {
-    /// 在 UIImage 上检测疑似缺陷区域；maxCount 限制返回数量
-    static func detect(in image: UIImage, maxCount: Int = 12) -> [DetectedDefect] {
+    /// 在 UIImage 上检测疑似缺陷区域；maxCount 限制返回数量。
+    /// roi：焊缝区域（归一化 0..1，原点左上）；传入时只保留中心落在 roi 内的缺陷，
+    ///      区域外的连通块（如非焊缝物体的高光/纹理）一律忽略，避免误报。
+    static func detect(in image: UIImage, maxCount: Int = 12, roi: CGRect? = nil) -> [DetectedDefect] {
         guard let cg = image.cgImage else { return [] }
         let w = cg.width, h = cg.height
         guard w > 4, h > 4 else { return [] }
@@ -115,12 +117,17 @@ struct PhotoDefectDetector {
             let aspect = Double(max(b.bw, b.bh)) / Double(max(1, min(b.bw, b.bh)))
             var type = "defect"
             if dark && aspect < 1.8 { type = "porosity" }
-            else if bright { type = "excess_weld_metal" }
             // 裂纹（含弧坑裂纹）：细长暗线，长宽比大；启发式，误报需模型提升
             else if dark && aspect >= 4 { type = "crack" }
             else if dark && aspect >= 1.8 { type = "undercut" }
+            // 注意：不再把「比背景亮的块」判为余高(excess_weld_metal)。
+            // 余高是几何量（焊缝凸起高度），2D 单帧亮度无法判定，必须由 LiDAR 剖面
+            // (WeldProfileAnalyzer) 计算。纯 CV 下亮块（高光/反光/纹理）一律忽略。
+            else if bright { continue }
             let rect = CGRect(x: Double(b.x1) / Double(w), y: Double(b.y1) / Double(h),
                               width: Double(b.bw) / Double(w), height: Double(b.bh) / Double(h))
+            // 焊缝区域闸门：只保留中心落在 roi 内的缺陷
+            if let r = roi, !r.contains(CGPoint(x: rect.midX, y: rect.midY)) { continue }
             out.append(DetectedDefect(rect: rect, type: type,
                                        pixelSize: CGSize(width: b.bw, height: b.bh)))
         }
