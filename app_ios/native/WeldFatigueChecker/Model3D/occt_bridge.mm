@@ -30,7 +30,8 @@
 #include <TopAbs_ShapeEnum.hxx>
 #include <STEPControl_Reader.hxx>
 #include <IGESControl_Reader.hxx>
-#include <IFSelect_Reader.hxx>
+// IFSelect_RetDone 等返回状态枚举所在头文件（OCCT 无 IFSelect_Reader.hxx）
+#include <IFSelect_ReturnStatus.hxx>
 #endif
 
 namespace {
