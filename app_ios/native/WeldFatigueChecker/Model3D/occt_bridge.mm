@@ -18,13 +18,14 @@
 
 #if USE_OCCT
 #include <TopoDS_Shape.hxx>
+#include <TopoDS.hxx>
 #include <TopExp_Explorer.hxx>
 #include <TopoDS_Face.hxx>
 #include <TopLoc_Location.hxx>
 #include <BRep_Tool.hxx>
 #include <BRepMesh_IncrementalMesh.hxx>
 #include <Poly_Triangulation.hxx>
-#include <Poly_Array1OfTriangle.hxx>
+#include <Poly_Triangle.hxx>
 #include <gp_Pnt.hxx>
 #include <gp_Trsf.hxx>
 #include <TopAbs_ShapeEnum.hxx>
@@ -53,22 +54,20 @@ namespace {
             const Handle(Poly_Triangulation)& tri = BRep_Tool::Triangulation(face, loc);
             if (tri.IsNull()) continue;
 
-            const TColgp_Array1OfPnt&   nodes = tri->Nodes();
-            const Poly_Array1OfTriangle& tris = tri->Triangles();
             gp_Trsf trf = loc.Transformation();
-
+            // OCCT 8.0：Poly_Triangulation 移除了 Nodes()/Triangles() 批量访问器，改用 Node(i)/Triangle(i)
             const int base = static_cast<int>(positions.size() / 3);
-            const int nNodes = nodes.Length();
+            const int nNodes = tri->NbNodes();
             for (int i = 1; i <= nNodes; ++i) {
-                gp_Pnt p = nodes.Value(i).Transformed(trf);
+                gp_Pnt p = tri->Node(i).Transformed(trf);
                 positions.push_back(static_cast<float>(p.X()));
                 positions.push_back(static_cast<float>(p.Y()));
                 positions.push_back(static_cast<float>(p.Z()));
                 normals.push_back(0.f); normals.push_back(0.f); normals.push_back(0.f);
             }
-            const int nTris = tris.Length();
+            const int nTris = tri->NbTriangles();
             for (int i = 1; i <= nTris; ++i) {
-                Poly_Triangle t = tris.Value(i);
+                Poly_Triangle t = tri->Triangle(i);
                 Standard_Integer n1, n2, n3;
                 t.Get(n1, n2, n3);
                 indices.push_back(base + static_cast<int>(n1) - 1);
