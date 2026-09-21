@@ -111,7 +111,7 @@ echo "== 生成 occt.xcconfig =="
 cat > "$HERE/occt.xcconfig" <<EOF
 // 由 build_occt_ios.sh 自动生成；build.sh 检测到 Vendor/OCCT 后会引用本文件
 USE_OCCT=1
-# OCCT 8.0 头文件用到 std::optional/in_place_t/void_t，必须 C++17（Xcode 默认 gnu++14 会报 no type named 'in_place_t'）
+// OCCT 8.0 头文件用到 std::optional/in_place_t/void_t，必须 C++17（Xcode 默认 gnu++14 会报 no type named 'in_place_t'）
 CLANG_CXX_LANGUAGE_STANDARD = gnu++17
 CLANG_CXX_LIBRARY = libc++
 HEADER_SEARCH_PATHS = $(inherited) "$VENDOR/include"
