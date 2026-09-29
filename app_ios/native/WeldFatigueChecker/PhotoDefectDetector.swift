@@ -12,11 +12,12 @@ struct DetectedDefect {
 }
 
 /// 按缺陷类型选取测量像素尺寸（ISO 5817 维度语义）：
-/// - 余高过大(excess_weld_metal) / 凸度(excessive_convexity)：限值为凸起高度 h（垂直于母材
-///   表面），照片中对应「垂直图片」方向的 bbox 高（跨焊缝竖向），而不是沿焊缝的横向长边。
+/// - 余高/焊瘤类（overlap / excess_weld_metal / excessive_convexity）：限值为凸起高度 h（垂直于
+///   母材表面），照片中对应「垂直图片（纵向-进图）方向」的 bbox 高，而不是沿焊缝的横向长边。
+///   —— 对齐用户要求：余高维度方向 = 纵向-进图方向。
 /// - 其余类型维持长边测量（气孔=直径、裂纹=长度、咬边=长度等）。
 func defectMeasurePx(type: String, pixelSize: CGSize) -> Double {
-    if type == "excess_weld_metal" || type == "excessive_convexity" {
+    if type == "overlap" || type == "excess_weld_metal" || type == "excessive_convexity" {
         return Double(pixelSize.height)
     }
     return Double(max(pixelSize.width, pixelSize.height))

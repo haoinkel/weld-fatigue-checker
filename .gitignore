@@ -12,3 +12,10 @@ node_modules/
 .DS_Store
 .workbuddy/
 _*.txt
+
+# ===== Python / 训练产物 =====
+__pycache__/
+*.pyc
+ml/raw_mine/images/
+ml/raw_mine/labels/
+*.log

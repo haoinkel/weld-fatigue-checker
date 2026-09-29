@@ -17,6 +17,7 @@
 #include <cmath>
 #include <vector>
 #include <cstdio>
+#include <cfloat>
 #include <cerrno>
 
 // 记录上一次读取失败的具体原因，供 Swift 端 UI 展示（只读）
@@ -47,6 +48,13 @@ const char* occt_last_error(void) { return g_occt_err; }
 #include <IGESControl_Controller.hxx>
 // IFSelect_RetDone 等返回状态枚举所在头文件（OCCT 无 IFSelect_Reader.hxx）
 #include <IFSelect_ReturnStatus.hxx>
+#include <Bnd_Box.hxx>
+#include <BRepBndLib.hxx>
+#include <BRepGProp.hxx>
+#include <GProp.hxx>
+#include <TopExp.hxx>
+#include <TopoDS_Solid.hxx>
+#include <TopoDS_Edge.hxx>
 #endif
 
 namespace {
@@ -129,6 +137,76 @@ namespace {
 #else
     OCCTMesh* buildMesh() { return nullptr; }
 #endif
+
+#if USE_OCCT
+    // 从 B-rep 提取几何特征向量（供 STEP→EN1993-1-9 细部归类自动回填）
+    int extractFeaturesFromShape(const TopoDS_Shape& shape, OCCTFeatures* out) {
+        if (!out) return 0;
+        std::memset(out, 0, sizeof(OCCTFeatures));
+        out->minEdgeLen = -1.0f;   // 标记"尚未取得有效最短边"
+
+        // 包围盒
+        Bnd_Box bb;
+        BRepBndLib::Add(shape, bb);
+        if (!bb.IsVoid()) {
+            double xmin, ymin, zmin, xmax, ymax, zmax;
+            bb.Get(xmin, ymin, zmin, xmax, ymax, zmax);
+            out->bboxX = static_cast<float>(xmax - xmin);
+            out->bboxY = static_cast<float>(ymax - ymin);
+            out->bboxZ = static_cast<float>(zmax - zmin);
+        }
+
+        int faces = 0, edges = 0, solids = 0;
+        float minE = FLT_MAX, maxE = 0.0f;
+        for (TopExp_Explorer ex(shape, TopAbs_SOLID); ex.More(); ex.Next()) {
+            ++solids;
+            const TopoDS_Solid& solid = TopoDS::Solid(ex.Current());
+            if (solid.IsNull()) continue;
+        }
+        for (TopExp_Explorer ex(shape, TopAbs_FACE); ex.More(); ex.Next()) { ++faces; }
+        for (TopExp_Explorer ex(shape, TopAbs_EDGE); ex.More(); ex.Next()) {
+            ++edges;
+            const TopoDS_Edge& e = TopoDS::Edge(ex.Current());
+            if (e.IsNull()) continue;
+            GProp_GProps props;
+            BRepGProp::LinearProperties(e, props);
+            double L = props.Mass();
+            if (L > 1e-3) {
+                if (L < minE) minE = static_cast<float>(L);
+                if (L > maxE) maxE = static_cast<float>(L);
+            }
+        }
+        out->faceCount = faces;
+        out->edgeCount = edges;
+        out->solidCount = solids;
+        out->minEdgeLen = (minE < FLT_MAX) ? minE : -1.0f;
+        out->maxEdgeLen = maxE;
+        return 1;
+    }
+
+    // 按扩展名选择 STEP 或 IGES 读取器，返回 OneShape
+    int readOneShape(const char* path, TopoDS_Shape& outShape) {
+        std::string p(path);
+        bool isIGES = (p.size() >= 4 && (p.substr(p.size() - 4) == ".igs" ||
+                                          p.substr(p.size() - 4) == ".IGS"));
+        if (isIGES) {
+            IGESControl_Controller::Init();
+            IGESControl_Reader reader;
+            if (reader.ReadFile(path) != IFSelect_RetDone) return 0;
+            reader.TransferRoots();
+            outShape = reader.OneShape();
+        } else {
+            STEPControl_Controller::Init();
+            STEPControl_Reader reader;
+            if (reader.ReadFile(path) != IFSelect_RetDone) return 0;
+            reader.TransferRoots();
+            outShape = reader.OneShape();
+        }
+        return outShape.IsNull() ? 0 : 1;
+    }
+#else
+    int extractFeaturesFromShape() { return 0; }
+#endif
 }
 
 OCCTMesh* occt_read_step(const char* path) {
@@ -208,4 +286,30 @@ void occt_free_mesh(OCCTMesh* mesh) {
     std::free(mesh->normals);
     std::free(mesh->indices);
     std::free(mesh);
+}
+
+int occt_extract_features(const char* path, OCCTFeatures* out) {
+#if USE_OCCT
+    g_occt_err[0] = '\0';
+    if (!path || !out) { occt_set_err("参数无效"); return 0; }
+    // 预检：fopen 权限/存在性
+    FILE* fp = fopen(path, "rb");
+    if (!fp) {
+        occt_set_err("文件无法打开(errno=%d: %s)", errno, strerror(errno));
+        return 0;
+    }
+    fclose(fp);
+    TopoDS_Shape shape;
+    if (!readOneShape(path, shape)) {
+        occt_set_err("STEP/IGES 读取失败（OCCT 读取器未注册或文件无法解析）");
+        return 0;
+    }
+    int r = extractFeaturesFromShape(shape, out);
+    if (!r) occt_set_err("几何特征提取失败");
+    return r;
+#else
+    (void)path; (void)out;
+    occt_set_err("USE_OCCT 未启用(请重新编译含 OCCT 的版本)");
+    return 0;
+#endif
 }

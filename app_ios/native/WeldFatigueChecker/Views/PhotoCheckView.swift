@@ -38,6 +38,9 @@ struct PhotoCheckView: View {
     // 实时相机扫描 sheet
     @State private var showLiveScan: Bool = false
 
+    // 检测历史 sheet
+    @State private var showHistory: Bool = false
+
     var body: some View {
         Group {
             if hSize == .regular {
@@ -146,11 +149,71 @@ struct PhotoCheckView: View {
 
     // MARK: - 顶部说明
 
+    // 工作流进度：根据当前状态推导用户走到了哪一步（0-based；-1 尚未开始）
+    private var workflowCurrent: Int {
+        let hasPhoto = store.photo != nil
+        let roiSet   = store.vision.weldSeamROI != nil
+        let hasDef   = !store.vision.imperfections.isEmpty
+        let calib    = store.photoPxPerMm != nil
+        let computed = store.result != nil
+        let done = [hasPhoto, roiSet, hasDef, calib, computed].enumerated()
+            .reduce(0) { $1.element ? $0 + 1 : $0 }
+        // 返回「已到达」的最大步骤索引（连续完成的步数 - 1）
+        return done - 1
+    }
+
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             SectionTitle(text: "① 焊缝外观检查", systemImage: "camera.viewfinder")
             Text("用 iPad 相机/相册选取焊缝照片，记录接头类型与表面缺陷。\n进阶：用 ARKit(LiDAR) 自动测得咬边/气孔等缺陷的真实尺寸，无需参照物。")
                 .font(.caption).foregroundStyle(Theme.textSecondary)
+
+            // 工作流步骤引导：让用户按正确顺序操作，避免漏掉「框选焊缝」等关键步骤
+            StepBar(steps: ["导入照片", "框选焊缝", "自动识别", "标定评级", "荷载计算"],
+                    current: workflowCurrent)
+                .padding(8)
+                .background(Theme.panelGradient, in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10)
+                    .stroke(Theme.cyan.opacity(0.18), lineWidth: 1))
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("工作流进度：已完成 \(max(workflowCurrent, 0)) / 5 步")
+
+            // 快捷操作：严重度排序 / 保存快照 / 历史
+            HStack(spacing: 8) {
+                Button {
+                    store.sortImperfections()
+                } label: {
+                    Label("按严重度排序", systemImage: "arrow.up.arrow.down")
+                        .font(.caption)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .accessibilityLabel("按严重度排序缺陷列表")
+                .disabled(store.vision.imperfections.count < 2)
+
+                Button {
+                    store.snapshotPhoto()
+                } label: {
+                    Label("保存快照", systemImage: "camera.on.rectangle")
+                        .font(.caption)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .accessibilityLabel("保存当前缺陷快照到历史")
+
+                Button {
+                    showHistory = true
+                } label: {
+                    Label("历史", systemImage: "clock")
+                        .font(.caption)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .accessibilityLabel("查看检测历史记录")
+            }
+        }
+        .sheet(isPresented: $showHistory) {
+            HistorySheet().environmentObject(store)
         }
     }
 
@@ -167,6 +230,8 @@ struct PhotoCheckView: View {
                                  in: Capsule())
                     .shadow(color: Theme.cyan.opacity(0.35), radius: 10, y: 0)
             }
+            .accessibilityLabel("拍摄或选择焊缝照片")
+            .accessibilityHint("从相册选取或调用相机拍摄焊缝照片")
             .onChange(of: pickerItem) { _, newItem in loadPhoto(from: newItem) }
 
             // 激光雷达自动识别焊缝及缺陷（仅 LiDAR 设备可用）
@@ -182,6 +247,8 @@ struct PhotoCheckView: View {
                                      in: Capsule())
                         .shadow(color: Color.orange.opacity(0.35), radius: 10, y: 0)
                 }
+                .accessibilityLabel("使用 LiDAR 自动识别焊缝与缺陷")
+                .accessibilityHint("仅支持 LiDAR 的设备；自动框选焊缝并测得真实尺寸")
                 .sheet(isPresented: $showLidarScan) {
                     LiDARWeldScanSheet().environmentObject(store)
                 }
@@ -199,6 +266,8 @@ struct PhotoCheckView: View {
                                  in: Capsule())
                     .shadow(color: Theme.violet.opacity(0.35), radius: 10, y: 0)
             }
+            .accessibilityLabel("打开实时相机扫描识别")
+            .accessibilityHint("任意带摄像头的设备；实时框出缺陷")
             .fullScreenCover(isPresented: $showLiveScan) {
                 LiveScanView().environmentObject(store)
             }
@@ -234,6 +303,8 @@ struct PhotoCheckView: View {
                                     .background(calMode ? Theme.cyan : Theme.cyan.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
                                     .foregroundStyle(calMode ? .black : Theme.cyan)
                                 }
+                                .accessibilityLabel("标定比例")
+                                .accessibilityHint("在照片参照物上点两点并输入真实长度，得到毫米换算")
                                 Button {
                                     roiMode.toggle()
                                     if roiMode { annoMode = false; calMode = false; calPts = [] }
@@ -244,6 +315,8 @@ struct PhotoCheckView: View {
                                     .background(roiMode ? Color.green : Theme.cyan.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
                                     .foregroundStyle(roiMode ? .black : Theme.cyan)
                                 }
+                                .accessibilityLabel("框选焊缝区域")
+                                .accessibilityHint("在照片上拖拽框住焊缝范围，检测只在该区域内生效")
                             }
                             if let ppm = store.photoPxPerMm {
                                 Text("已标定：1 mm ≈ \(ppm, specifier: "%.2f") px（自动框尺寸按 mm 显示）")
@@ -336,6 +409,7 @@ struct PhotoCheckView: View {
                             Image(systemName: "brain").foregroundStyle(.purple)
                             Toggle("使用 AI 模型识别", isOn: $useMLModel)
                                 .font(.subheadline)
+                                .accessibilityLabel("使用 AI 模型识别缺陷")
                             Spacer()
                             Text(MLDefectDetector.isModelAvailable ? "模型已加载" : "未加载→CV")
                                 .font(.caption2)
@@ -375,6 +449,7 @@ struct PhotoCheckView: View {
                     }
                     Button { store.addImperfection() } label: { Label("+ 添加缺陷", systemImage: "plus") }
                         .font(.caption)
+                        .accessibilityLabel("手动添加新缺陷")
 
                     // LiDAR 设备能力提示
                     LiDARCapabilityHint()
@@ -489,26 +564,45 @@ struct PhotoCheckView: View {
             }
             store.vision.imperfections.append(imp)
         }
+        regradeAll()   // 识别完成后按累计气孔率法统一重评（含气孔双判据）
         let engine = MLDefectDetector.engineName
-        store.autoState = detects.isEmpty
+        store.autoState = (detects.isEmpty
             ? "未检测到明显视觉异常（\(engine)）。仍建议按 ISO 5817 做无损检测复核。"
             : "已自动识别 \(detects.count) 处疑似缺陷（\(engine)），位置与尺寸已在照片上标注。" +
               (ppm == nil
                 ? " 点「📏 标定比例」设定参照长度后，尺寸以 mm 显示并自动评级。"
-                : " 已按板厚 \(String(format: "%.0f", t)) mm 做 ISO 5817 评级。")
+                : " 已按板厚 \(String(format: "%.0f", t)) mm 做 ISO 5817 评级。"))
+            + "\n" + ISO5817Grader.ndtDisclaimer
     }
 
-    /// 板厚变化后，重新评级所有已测得尺寸的缺陷
+    /// 板厚/类型/尺寸变化后，重新评级所有已测得尺寸的缺陷。
+    /// 气孔按「截面累计气孔率法」做双判据（单孔直径 + 累计气孔率），与设计评估路径一致。
     private func regradeAll() {
         let t = store.vision.plateThicknessMm
+        let level = store.params.qualityLevel   // B|C|D，与设计评估同一目标等级
+        // 先聚合全部气孔直径（同一条焊缝的气孔率按整段累计）
+        let pores = store.vision.imperfections.compactMap { imp -> Double? in
+            guard imp.type == "porosity" else { return nil }
+            return imp.poreMm ?? imp.sizeMm
+        }
+        let agg = pores.isEmpty ? nil :
+            ISO5817Grader.gradePorosity(pores: pores, t: t, b: nil, level: level)
         for i in store.vision.imperfections.indices {
-            guard let s = store.vision.imperfections[i].sizeMm else { continue }
             let type = store.vision.imperfections[i].type
             guard type != "defect" else { continue }
-            let g = ISO5817Grader.grade(type: type, sizeMm: s, t: t)
-            store.vision.imperfections[i].grade = g.level
-            store.vision.imperfections[i].accepted = g.accepted
-            store.vision.imperfections[i].limitText = g.limitText
+            guard let s = store.vision.imperfections[i].sizeMm else { continue }
+            if type == "porosity", let a = agg {
+                // 等级徽章用单孔直径判定等级；accepted/limitText 用累计法（双判据）
+                let g = ISO5817Grader.grade(type: "porosity", sizeMm: s, t: t)
+                store.vision.imperfections[i].grade = g.level
+                store.vision.imperfections[i].accepted = a.accepted
+                store.vision.imperfections[i].limitText = a.limitText
+            } else {
+                let g = ISO5817Grader.grade(type: type, sizeMm: s, t: t)
+                store.vision.imperfections[i].grade = g.level
+                store.vision.imperfections[i].accepted = g.accepted
+                store.vision.imperfections[i].limitText = g.limitText
+            }
         }
     }
 
@@ -543,9 +637,9 @@ struct ImperfectionRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
                 Picker("类型", selection: $store.vision.imperfections[index].type) {
-                    Text("咬边").tag("undercut"); Text("气孔").tag("porosity")
-                    Text("余高过大").tag("excess_weld_metal"); Text("焊瘤/满溢").tag("overlap")
-                    Text("错边").tag("linear_misalignment"); Text("裂纹/弧坑裂纹").tag("crack")
+                    ForEach(DefectTypes.all, id: \.tag) { d in
+                        Text(d.label).tag(d.tag)
+                    }
                 }
                 .frame(maxWidth: .infinity)
                 .onChange(of: store.vision.imperfections[index].type) { _, _ in regradeRow() }
@@ -560,7 +654,7 @@ struct ImperfectionRow: View {
                 if let g = store.vision.imperfections[index].grade {
                     let ok = store.vision.imperfections[index].accepted ?? false
                     Image(systemName: ok ? "checkmark.seal.fill" : "xmark.octagon.fill")
-                        .foregroundStyle(ok ? .green : .red)
+                        .foregroundStyle(ok ? Theme.ok : Theme.danger)
                         .help(store.vision.imperfections[index].limitText ?? "")
                 }
 
@@ -597,7 +691,7 @@ struct ImperfectionRow: View {
                 let ok = store.vision.imperfections[index].accepted ?? false
                 Text("ISO 5817 \(g)： \(lt)")
                     .font(.caption2)
-                    .foregroundStyle(ok ? .green : .red)
+                    .foregroundStyle(ok ? Theme.ok : Theme.danger)
             }
         }
         .padding(8)
@@ -666,7 +760,7 @@ struct AnnotationPhotoView: View {
                         let bw = bbox.width * rect.width
                         let bh = bbox.height * rect.height
                         Rectangle()
-                            .stroke(Color.orange, lineWidth: 2)
+                            .stroke(Theme.defect, lineWidth: 2)
                             .frame(width: bw, height: bh)
                             .position(x: bx + bw / 2, y: by + bh / 2)
                         let longPx = imp.pixelSize.map { defectMeasurePx(type: imp.type, pixelSize: $0) } ?? 0
@@ -678,7 +772,7 @@ struct AnnotationPhotoView: View {
                             .font(.system(size: 11, weight: .bold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 5).padding(.vertical, 2)
-                            .background(Color.orange.opacity(0.9), in: RoundedRectangle(cornerRadius: 5))
+                            .background(Theme.defect.opacity(0.9), in: RoundedRectangle(cornerRadius: 5))
                             .position(x: bx + bw / 2, y: max(rect.minY + 12, by - 10))
                     } else if let loc = imp.location {
                         // 手动定位点（红）
@@ -829,9 +923,9 @@ struct AnnotationMarker: View {
         switch type {
         case "undercut": return "咬边"
         case "porosity": return "气孔"
-        case "excess_weld_metal": return "余高过大"
         case "overlap": return "焊瘤"
-        case "linear_misalignment": return "错边"
+        case "crack": return "裂纹"
+        case "unfused": return "未熔合"
         default: return "缺陷"
         }
     }
@@ -856,5 +950,76 @@ struct LiDARCapabilityHint: View {
         .padding(8)
         .background(Theme.panelGradient, in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.cyan.opacity(0.15), lineWidth: 1))
+    }
+}
+
+// MARK: - 检测历史 sheet
+
+struct HistorySheet: View {
+    @EnvironmentObject var store: Store
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    if store.history.isEmpty {
+                        Text("暂无记录。完成「荷载计算评估」或点照片区「保存快照」后，记录会出现在这里。")
+                            .font(.subheadline).foregroundStyle(Theme.textSecondary)
+                            .padding()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        ForEach(store.history) { h in
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack(spacing: 8) {
+                                    Text(h.kind)
+                                        .font(.caption2.bold())
+                                        .padding(.horizontal, 6).padding(.vertical, 3)
+                                        .background(Theme.cyan.opacity(0.16), in: Capsule())
+                                        .foregroundStyle(Theme.cyan)
+                                    Text("\(h.date, style: .date) \(h.date, style: .time)")
+                                        .font(.caption2).foregroundStyle(Theme.textSecondary)
+                                    Spacer()
+                                }
+                                Text(h.title)
+                                    .font(.headline).foregroundStyle(Theme.textPrimary)
+                                HStack(spacing: 12) {
+                                    Text("缺陷 \(h.defects) 处").font(.caption)
+                                        .foregroundStyle(Theme.textSecondary)
+                                    Text("超差 \(h.rejected) 处").font(.caption)
+                                        .foregroundStyle(h.rejected > 0 ? Theme.danger : Theme.textSecondary)
+                                    if let u = h.utilization {
+                                        Text(String(format: "利用率 %.0f%%", u * 100))
+                                            .font(.caption)
+                                            .foregroundStyle(u > 1 ? Theme.danger : (u > 0.8 ? Theme.warn : Theme.ok))
+                                    }
+                                    if let p = h.pass {
+                                        Text(p ? "满足" : "不满足")
+                                            .font(.caption).foregroundStyle(p ? Theme.ok : Theme.danger)
+                                    }
+                                }
+                                if !h.summary.isEmpty {
+                                    Text("缺陷：" + h.summary)
+                                        .font(.caption2).foregroundStyle(Theme.textSecondary)
+                                }
+                            }
+                            .padding(10)
+                            .background(Theme.panelGradient, in: RoundedRectangle(cornerRadius: 10))
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.cyan.opacity(0.15), lineWidth: 1))
+                        }
+                    }
+                }
+                .padding()
+            }
+            .background(Theme.bgGradient.ignoresSafeArea())
+            .navigationTitle("检测历史")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("完成") { dismiss() }
+                        .accessibilityLabel("关闭历史记录")
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
     }
 }

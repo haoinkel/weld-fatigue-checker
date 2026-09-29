@@ -13,6 +13,8 @@ struct DesignInput {
     var fullPenetration: Bool = false
     var groundFlush: Bool = false
     var attachmentLengthMm: Double? = 60
+    var transitionRadiusMm: Double? = nil   // 附件过渡半径 r（表8.4 纵向附件按 r/L 分级）
+    var attachmentToeGround: Bool = false    // 横向附件焊趾端部打磨（表8.4 detail4 → FAT80）
     var plateThicknessMm: Double = 12
     var copeHole: Bool = false
     var inTensionZone: Bool = true
@@ -65,6 +67,7 @@ struct UserParams {
     var gammaMf: Double = 1.0
     var qualityLevel: String = "C"   // B|C|D
     var thickness: Double = 12
+    var weldWidthMm: Double = 24      // 余高/凸度计算基准宽度 b（ISO 5817 余高限值 h≤v·b+add）；缺省 2t
 }
 
 // MARK: - 结果结构
@@ -82,9 +85,12 @@ struct FatigueResult {
     let improvements: [(label: String, factor: Double, fatAfter: Double)]
     let effectiveFat: Double; let deltaSigma: Double; let gammaMf: Double
     let nAllowable: Double; let nRequired: Double; let utilization: Double; let pass: Bool
+    let fatPenalties: [String]        // 缺陷→FAT 折减说明（空=未因缺陷折减）
+    let defectForcedFail: Bool        // 因裂纹/未熔合/未焊透等一票否决缺陷强制判废
 }
 struct ImperfectionResult {
     let label: String; let accepted: Bool?; let limit: String; let fatigueRelevant: Bool
+    let notPermitted: Bool   // true = 该质量等级不允许(裂纹/未熔合/焊瘤 B,C/根部咬边 B…)，一票否决强制判废
 }
 struct PlanItem {
     let priority: String; let ruleId: String; let title: String

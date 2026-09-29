@@ -14,9 +14,11 @@ struct ImprovementMethod { let method: String; let label: String; let factor: Do
 
 struct IsoLimit {
     var value: Double?
-    var ref: String?      // "t" 表示与板厚成比例
+    var ref: String?      // "t" 表示与板厚成比例；"b" 表示焊缝宽度基准
     var maxAbs: Double?
     var maxPore: Double?
+    var permitted: Bool?  // false = 该等级不允许（裂纹/未熔合/焊瘤 B,C/根部咬边 B 等一票否决）
+    var add: Double?      // 比例项附加常数（余高/凸度 h≤v·ref+add）
 }
 struct ImperfectionSpec {
     let type: String; let label: String; let fatigueRelevant: Bool
@@ -65,13 +67,13 @@ enum KnowledgeBank {
         DetailCategory(id: "WS10s", fat: 100, name: "纵向对接有起止点"),
         DetailCategory(id: "WS11a", fat: 140, name: "空心型材无起止点自动纵缝 t≤12.5"),
         DetailCategory(id: "WS11b", fat: 125, name: "空心型材无起止点自动纵缝 t≥12.5"),
-        DetailCategory(id: "W_FILLET_TRANS_NLC", fat: 80, name: "横向非承载角焊缝（附件，焊趾受拉）"),
-        DetailCategory(id: "W_FILLET_TRANS_LC", fat: 80, name: "横向承载角焊缝（十字接头，传力）"),
-        DetailCategory(id: "W_FILLET_LONG", fat: 71, name: "纵向角焊缝（平行受力方向）"),
+        DetailCategory(id: "W_TA_TRANS_71", fat: 80, name: "横向非承载角焊缝（附件，焊趾受拉）"),
+        DetailCategory(id: "W_CRUCIFORM_TOE_80", fat: 80, name: "横向承载角焊缝（十字接头，传力）"),
+        DetailCategory(id: "W_LA_LONG_50", fat: 71, name: "纵向角焊缝（平行受力方向）"),
         DetailCategory(id: "W_BUTT_ASWELD", fat: 100, name: "横向对接焊缝（焊态，外形良好）"),
         DetailCategory(id: "W_BUTT_GROUND", fat: 125, name: "横向对接焊缝（打磨与母材齐平）"),
-        DetailCategory(id: "W_COVER_END", fat: 80, name: "盖板端部（横向）"),
-        DetailCategory(id: "W_STIFF_END", fat: 80, name: "加劲肋端部（横向受拉）")
+        DetailCategory(id: "W_COVER_END_80", fat: 80, name: "盖板端部（横向）"),
+        DetailCategory(id: "W_STIFF_WEB_71", fat: 80, name: "加劲肋端部（横向受拉）")
     ]
 
     private static let builtInImprovements: [ImprovementMethod] = [
@@ -82,14 +84,32 @@ enum KnowledgeBank {
     ]
 
     private static let builtInImperfections: [ImperfectionSpec] = [
+        ImperfectionSpec(type: "crack", label: "裂纹", fatigueRelevant: true,
+            limits: ["B": IsoLimit(permitted: false), "C": IsoLimit(permitted: false), "D": IsoLimit(permitted: false)]),
+        ImperfectionSpec(type: "lack_of_fusion", label: "未熔合", fatigueRelevant: true,
+            limits: ["B": IsoLimit(permitted: false), "C": IsoLimit(permitted: false), "D": IsoLimit(permitted: false)]),
+        ImperfectionSpec(type: "incomplete_penetration", label: "未焊透（单面焊根）", fatigueRelevant: true,
+            limits: ["B": IsoLimit(permitted: false), "C": IsoLimit(permitted: false),
+                     "D": IsoLimit(value: 0.2, ref: "t", maxAbs: 2.0)]),
         ImperfectionSpec(type: "undercut", label: "咬边", fatigueRelevant: true,
             limits: ["B": IsoLimit(value: 0.05, ref: "t", maxAbs: 0.5),
                      "C": IsoLimit(value: 0.1, ref: "t", maxAbs: 1.0),
                      "D": IsoLimit(value: 0.15, ref: "t", maxAbs: 1.5)]),
+        ImperfectionSpec(type: "root_undercut", label: "根部咬边", fatigueRelevant: true,
+            limits: ["B": IsoLimit(permitted: false),
+                     "C": IsoLimit(value: 0.05, ref: "t", maxAbs: 0.5),
+                     "D": IsoLimit(value: 0.1, ref: "t", maxAbs: 1.0)]),
         ImperfectionSpec(type: "porosity", label: "气孔", fatigueRelevant: false,
-            limits: ["B": IsoLimit(maxPore: 0.5), "C": IsoLimit(maxPore: 1.0), "D": IsoLimit(maxPore: 1.5)]),
-        ImperfectionSpec(type: "excess_weld_metal", label: "余高过大(凸度)", fatigueRelevant: true, limits: [:]),
-        ImperfectionSpec(type: "overlap", label: "焊瘤/满溢", fatigueRelevant: true, limits: [:]),
+            limits: ["B": IsoLimit(maxPore: 0.5, poreRate: 2.0),
+                     "C": IsoLimit(maxPore: 0.5, poreRate: 4.0),
+                     "D": IsoLimit(maxPore: 3.0, poreRate: 8.0)]),
+        ImperfectionSpec(type: "excess_weld_metal", label: "余高过大(凸度)", fatigueRelevant: true,
+            limits: ["B": IsoLimit(value: 0.1, ref: "b", maxAbs: 5.0, add: 1.0),
+                     "C": IsoLimit(value: 0.15, ref: "b", maxAbs: 7.0, add: 1.0),
+                     "D": IsoLimit(value: 0.25, ref: "b", maxAbs: 10.0, add: 1.0)]),
+        ImperfectionSpec(type: "overlap", label: "焊瘤/满溢", fatigueRelevant: true,
+            limits: ["B": IsoLimit(permitted: false), "C": IsoLimit(permitted: false),
+                     "D": IsoLimit(value: 1.0, maxAbs: 1.0)]),
         ImperfectionSpec(type: "linear_misalignment", label: "错边", fatigueRelevant: true,
             limits: ["B": IsoLimit(value: 0.1, ref: "t", maxAbs: 1.0),
                      "C": IsoLimit(value: 0.15, ref: "t", maxAbs: 2.0),

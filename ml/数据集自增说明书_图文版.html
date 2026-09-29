@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>焊缝缺陷数据集自增说明书（5 类 · 图文版）</title>
+<style>
+  :root{
+    --bg:#f5f7fa; --card:#ffffff; --ink:#1f2933; --sub:#52606d;
+    --line:#e4e7eb; --accent:#d9661a; --accent2:#2b6cb0; --ok:#2f855a;
+    --warn:#b7791f; --chip:#eef2f7;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    line-height:1.7;font-size:15px;}
+  .wrap{max-width:920px;margin:0 auto;padding:32px 22px 64px;}
+  header{background:linear-gradient(135deg,#2b3a4a,#3b5168);color:#fff;
+    border-radius:16px;padding:26px 28px;margin-bottom:26px;}
+  header h1{margin:0 0 6px;font-size:24px;}
+  header p{margin:0;opacity:.85;font-size:14px;}
+  section{background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 3px rgba(0,0,0,.03);}
+  h2{font-size:18px;margin:0 0 14px;padding-left:12px;border-left:4px solid var(--accent);}
+  h3{font-size:15px;color:var(--accent2);margin:18px 0 8px;}
+  p,li{color:var(--sub);}
+  code{background:var(--chip);padding:2px 6px;border-radius:5px;font-size:13px;
+    color:#b83280;font-family:"SFMono-Regular",Consolas,monospace;}
+  pre{background:#1e293b;color:#e2e8f0;padding:14px 16px;border-radius:10px;
+    overflow:auto;font-size:13px;line-height:1.55;}
+  pre .c{color:#7dd3fc;} pre .k{color:#fca5a5;} pre .s{color:#fde68a;}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;}
+  .cls{display:flex;flex-direction:column;align-items:center;text-align:center;
+    border:1px solid var(--line);border-radius:12px;padding:12px 8px;background:#fbfcfe;}
+  .cls svg{margin-bottom:6px;}
+  .cls .id{font-weight:700;color:var(--accent);font-size:13px;}
+  .cls .en{font-size:13px;color:var(--ink);font-weight:600;}
+  .cls .cn{font-size:13px;color:var(--sub);}
+  .cls .ds{font-size:11px;color:#8a94a6;margin-top:3px;}
+  .tree{background:#0f172a;color:#cbd5e1;border-radius:10px;padding:14px 16px;
+    font-family:Consolas,monospace;font-size:13px;line-height:1.6;overflow:auto;}
+  .tree .d{color:#7dd3fc;} .tree .f{color:#e2e8f0;} .tree .x{color:#fde68a;}
+  .flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;justify-content:center;}
+  .node{background:#eef4fb;border:1px solid #cfe0f0;border-radius:10px;padding:10px 14px;
+    text-align:center;min-width:120px;font-size:13px;color:var(--ink);}
+  .node b{display:block;color:var(--accent2);font-size:13px;margin-bottom:2px;}
+  .arrow{align-self:center;color:var(--accent);font-size:20px;font-weight:700;}
+  .note{border-left:4px solid var(--warn);background:#fffaf0;padding:10px 14px;
+    border-radius:0 8px 8px 0;font-size:13px;margin:12px 0;}
+  .ok{border-left-color:var(--ok);background:#f0fff4;}
+  table{border-collapse:collapse;width:100%;font-size:13px;margin-top:8px;}
+  table th,table td{border:1px solid var(--line);padding:8px 10px;text-align:left;}
+  table th{background:#f0f4f8;color:var(--ink);}
+  .check{list-style:none;padding:0;}
+  .check li{padding:6px 0 6px 30px;position:relative;}
+  .check li::before{content:"☐";position:absolute;left:6px;color:var(--accent);font-size:16px;}
+  .pill{display:inline-block;background:var(--chip);border-radius:20px;padding:2px 10px;
+    font-size:12px;color:var(--sub);margin:2px 4px 2px 0;}
+  footer{text-align:center;color:#9aa5b1;font-size:12px;margin-top:10px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>焊缝缺陷数据集自增说明书</h1>
+  <p>5 类缺陷 · 图文版 · 自行新增数据并重训 WeldFatigueChecker 模型</p>
+</header>
+
+<!-- 1. 总览 -->
+<section>
+  <h2>一、这是什么 / 适用场景</h2>
+  <p>你在现场拍了更多焊道照片，想自己标好缺陷、加进训练集提升模型精度。本说明书配合
+  <code>ml/weld_train.py</code> 的多源合并架构，告诉你<strong>目录怎么放、框怎么标、脚本改哪两处、怎么重跑</strong>。</p>
+  <p>整体链路：<span class="pill">整理 raw_mine/</span> → <span class="pill">脚本合并成 5 类 YOLO</span> →
+  <span class="pill">--fresh 训 120 轮</span> → <span class="pill">自动导出 mlpackage</span></p>
+  <div class="note ok">脚本对<strong>不在 5 类内的缺陷框会自动忽略</strong>，所以标错类别不会报错，只是被丢弃——放心按模板来。</div>
+</section>
+
+<!-- 2. 5类缺陷 -->
+<section>
+  <h2>二、5 类缺陷定义（标注时严格对照）</h2>
+  <p>只标下面这 5 类。图里若有夹渣、飞溅等其他缺陷<strong>不要标</strong>。</p>
+  <div class="cards">
+    <div class="cls">
+      <svg width="48" height="48" viewBox="0 0 48 48">
+        <rect x="4" y="14" width="40" height="20" rx="3" fill="#cbd5e1" stroke="#64748b"/>
+        <circle cx="16" cy="22" r="3" fill="#475569"/><circle cx="28" cy="26" r="2.4" fill="#475569"/>
+        <circle cx="34" cy="20" r="2" fill="#475569"/><circle cx="22" cy="28" r="1.8" fill="#475569"/>
+      </svg>
+      <span class="id">id 0</span><span class="en">porosity</span><span class="cn">气孔</span>
+      <span class="ds">焊接气孔</span>
+    </div>
+    <div class="cls">
+      <svg width="48" height="48" viewBox="0 0 48 48">
+        <path d="M6 24 L14 22 L20 27 L27 19 L33 26 L42 23" fill="none" stroke="#b91c1c" stroke-width="3" stroke-linejoin="round"/>
+      </svg>
+      <span class="id">id 1</span><span class="en">crack</span><span class="cn">裂纹</span>
+      <span class="ds">焊接裂纹</span>
+    </div>
+    <div class="cls">
+      <svg width="48" height="48" viewBox="0 0 48 48">
+        <path d="M4 30 L20 30 L24 24 L28 30 L44 30" fill="none" stroke="#0f766e" stroke-width="3" stroke-linejoin="round"/>
+        <line x1="4" y1="30" x2="44" y2="30" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="3 3"/>
+      </svg>
+      <span class="id">id 2</span><span class="en">undercut</span><span class="cn">咬边</span>
+      <span class="ds">焊缝边缘凹陷</span>
+    </div>
+    <div class="cls">
+      <svg width="48" height="48" viewBox="0 0 48 48">
+        <path d="M4 28 L18 28 Q24 16 30 28 L44 28" fill="none" stroke="#b45309" stroke-width="3" stroke-linejoin="round"/>
+      </svg>
+      <span class="id">id 3</span><span class="en">overlap</span><span class="cn">焊瘤/过高</span>
+      <span class="ds">多余焊缝金属</span>
+    </div>
+    <div class="cls">
+      <svg width="48" height="48" viewBox="0 0 48 48">
+        <line x1="4" y1="24" x2="20" y2="24" stroke="#1e3a8a" stroke-width="4"/>
+        <line x1="28" y1="24" x2="44" y2="24" stroke="#1e3a8a" stroke-width="4" stroke-dasharray="3 3"/>
+        <text x="22" y="20" font-size="12" fill="#1e3a8a">∅</text>
+      </svg>
+      <span class="id">id 4</span><span class="en">unfused</span><span class="cn">未熔合</span>
+      <span class="ds">未熔合/未焊透</span>
+    </div>
+  </div>
+</section>
+
+<!-- 3. 目录结构 -->
+<section>
+  <h2>三、目录结构（照抄）</h2>
+  <p>在 AI Studio 的 <code>/home/aistudio/work/</code> 下新建 <code>raw_mine/</code>，图片与标注靠<strong>同名</strong>配对：</p>
+  <div class="tree">
+<span class="d">raw_mine/</span><br>
+├── <span class="x">classes.txt</span>          <span style="color:#64748b"># 必须，5 行，顺序固定</span><br>
+├── <span class="d">images/</span>              <span style="color:#64748b"># 原图 jpg/png，可再分子文件夹</span><br>
+│   ├── <span class="f">weld_001.jpg</span><br>
+│   └── <span class="f">weld_002.png</span><br>
+└── <span class="d">labels/</span>              <span style="color:#64748b"># 标注，文件名与图片同名（去扩展名）</span><br>
+    ├── <span class="x">weld_001.txt</span><br>
+    └── <span class="x">weld_002.txt</span>
+  </div>
+  <div class="note"><strong>classes.txt</strong>（直接复制，顺序=id 0→4）：
+<pre style="background:#1e293b;color:#e2e8f0;padding:10px 12px;border-radius:8px;margin:8px 0 0;">porosity
+crack
+undercut
+overlap
+unfused</pre></div>
+</section>
+
+<!-- 4. 标注格式 + 示意图 -->
+<section>
+  <h2>四、标注格式（YOLO txt）</h2>
+  <p>每个 <code>.txt</code> 一行一个框：<code>&lt;class_id&gt; &lt;cx&gt; &lt;cy&gt; &lt;w&gt; &lt;h&gt;</code>，全部归一化到 0~1。</p>
+
+  <h3>标注框坐标示意</h3>
+  <svg width="100%" viewBox="0 0 560 280" style="background:#0f172a;border-radius:10px;">
+    <!-- 模拟焊道底图 -->
+    <rect x="20" y="20" width="520" height="240" fill="#334155"/>
+    <rect x="20" y="130" width="520" height="20" fill="#475569"/>
+    <text x="30" y="125" fill="#94a3b8" font-size="12">焊道（示意）</text>
+    <!-- 标注框 -->
+    <rect x="150" y="70" width="170" height="90" fill="rgba(220,38,38,.12)" stroke="#f87171" stroke-width="2"/>
+    <line x1="235" y1="70" x2="235" y2="160" stroke="#fbbf24" stroke-width="1.2"/>
+    <line x1="150" y1="115" x2="320" y2="115" stroke="#fbbf24" stroke-width="1.2"/>
+    <circle cx="235" cy="115" r="3" fill="#fbbf24"/>
+    <!-- 中心标签 -->
+    <text x="240" y="108" fill="#fbbf24" font-size="12">(cx, cy)</text>
+    <!-- 宽高标注 -->
+    <line x1="150" y1="172" x2="320" y2="172" stroke="#34d399" stroke-width="1.5"/>
+    <text x="220" y="188" fill="#34d399" font-size="12">w</text>
+    <line x1="332" y1="70" x2="332" y2="160" stroke="#34d399" stroke-width="1.5"/>
+    <text x="338" y="120" fill="#34d399" font-size="12">h</text>
+    <!-- 图像尺寸 -->
+    <text x="30" y="262" fill="#94a3b8" font-size="11">整图宽 W / 高 H（框坐标均 ÷W、÷H 归一化）</text>
+  </svg>
+
+  <h3>坐标换算（像素 → 归一化）</h3>
+  <pre>
+cx = (x_min + x_max) / 2 / img_width
+cy = (y_min + y_max) / 2 / img_height
+w  = (x_max - x_min) / img_width
+h  = (y_max - y_min) / img_height</pre>
+
+  <h3>示例（1 个气孔 + 1 个咬边）</h3>
+  <pre><span class="c"># weld_001.txt</span>
+<span class="k">0</span> 0.512 0.430 0.120 0.090   <span class="c"># 气孔 porosity</span>
+<span class="k">2</span> 0.300 0.880 0.200 0.040   <span class="c"># 咬边 undercut</span></pre>
+
+  <div class="note">标注工具：<strong>labelImg</strong>（存 YOLO txt 开箱即用）/ makesense.ai / Roboflow Annotate（国内需代理）。
+  也支持 <strong>VOC xml</strong>（labelImg 默认格式），脚本会自动解析 <code>&lt;name&gt;porosity&lt;/name&gt;</code>，无需手动转。</div>
+</section>
+
+<!-- 5. 脚本改两处 -->
+<section>
+  <h2>五、接入训练脚本（改 2 处）</h2>
+  <p>打开 <code>ml/weld_train.py</code>：</p>
+  <h3>① 在 <code>SOURCE_NAMES</code> 字典加一行</h3>
+  <pre>SOURCE_NAMES = {
+    ...
+    <span class="k">'mine'</span>: [<span class="s">'porosity'</span>, <span class="s">'crack'</span>, <span class="s">'undercut'</span>, <span class="s">'overlap'</span>, <span class="s">'unfused'</span>],
+}</pre>
+  <h3>② 在 <code>SOURCES</code> 列表加一项</h3>
+  <pre>SOURCES = [
+    ...
+    {<span class="k">'root'</span>: <span class="s">'raw_mine'</span>, <span class="k">'key'</span>: <span class="s">'mine'</span>, <span class="k">'needs'</span>: None},   <span class="c"># 你的自建数据</span>
+]</pre>
+  <div class="note ok"><strong>REMAP 无需改</strong>：这 5 个英文名在脚本里已是 1:1 映射（如 <code>'crack':'crack'</code>）。
+  若 <code>raw_mine/</code> 暂时不存在，脚本只打印"跳过"，不影响其他源训练。</div>
+</section>
+
+<!-- 6. 运行流程 -->
+<section>
+  <h2>六、运行流程（加数据后必须重建数据集）</h2>
+  <div class="flow">
+    <div class="node"><b>整理 raw_mine/</b>图片+标注上传 AI Studio</div>
+    <span class="arrow">→</span>
+    <div class="node"><b>改脚本 2 处</b>SOURCE_NAMES / SOURCES</div>
+    <span class="arrow">→</span>
+    <div class="node"><b>合并数据集</b>统一 5 类 YOLO</div>
+    <span class="arrow">→</span>
+    <div class="node"><b>--fresh 训 120 轮</b>路线A增强</div>
+    <span class="arrow">→</span>
+    <div class="node"><b>自动导出</b>WeldDefectModel.mlpackage</div>
+  </div>
+  <pre><span class="c"># 新建 cell 运行</span>
+%run /home/aistudio/work/weld_train.py --fresh</pre>
+  <p>看到 <code>[合并] mine: 保留图-标对 N</code> 即确认你的数据被读入；合并完打印 <code>各类框数:{...}</code> 可判断哪类偏少。</p>
+  <div class="note">去掉 <code>--fresh</code> 则是"旧模型续吃新数据"；<strong>加量后建议用 --fresh 干净重训</strong>。
+  数据集切分确定性：<code>md5(文件名)%5==0</code> 进验证集（约 20%），可复现。</div>
+</section>
+
+<!-- 7. 样本量建议 -->
+<section>
+  <h2>七、每类建议样本量</h2>
+  <table>
+    <tr><th>类别</th><th>类型</th><th>建议图数</th><th>建议框数</th><th>备注</th></tr>
+    <tr><td>porosity 气孔</td><td>多数类</td><td>≥150</td><td>≥300</td><td>基础量</td></tr>
+    <tr><td>overlap 焊瘤</td><td>多数类</td><td>≥150</td><td>≥300</td><td>基础量</td></tr>
+    <tr><td>unfused 未熔合</td><td>多数类</td><td>≥150</td><td>≥300</td><td>基础量</td></tr>
+    <tr><td>crack 裂纹</td><td><strong>少数类</strong></td><td>≥100</td><td>≥200</td><td>尽量多，脚本过采样×1.5补强</td></tr>
+    <tr><td>undercut 咬边</td><td><strong>少数类</strong></td><td>≥100</td><td>≥200</td><td>尽量多，copy_paste=0.45补强</td></tr>
+  </table>
+  <div class="note">路线 A 已含增强（copy_paste + 过采样 + mixup + 几何增广），但<strong>原始样本越多越稳</strong>。
+  验收线：porosity mAP50 ≥ 0.85；crack / undercut <strong>recall ≥ 0.9</strong>。</div>
+</section>
+
+<!-- 8. 检查清单 -->
+<section>
+  <h2>八、快速检查清单</h2>
+  <ul class="check">
+    <li><code>raw_mine/classes.txt</code> 5 行顺序正确</li>
+    <li>每个有缺陷的图都有同名 <code>.txt</code>（或 <code>.xml</code>）</li>
+    <li>class_id 用 0~4，且只对应 5 类</li>
+    <li>坐标已归一化到 0~1（无超界、无负数）</li>
+    <li><code>weld_train.py</code> 已加 <code>SOURCE_NAMES['mine']</code> 与 <code>SOURCES</code> 两项</li>
+    <li>运行用 <code>--fresh</code>，并看到 <code>[合并] mine: 保留图-标对 N</code></li>
+    <li>核对 <code>各类框数</code> 后决定是否继续补某类</li>
+  </ul>
+</section>
+
+<footer>配套纯文字模板：ml/数据集自增模板_5类缺陷.md ｜ 主操作说明书：焊缝缺陷识别及判定_任务总览与操作说明书.md</footer>
+
+</div>
+</body>
+</html>

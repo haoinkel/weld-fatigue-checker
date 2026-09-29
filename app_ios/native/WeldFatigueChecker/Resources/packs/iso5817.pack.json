@@ -108,9 +108,9 @@
       "fatigue_relevant": false,
       "note": "按截面百分比法（B≤2%/C≤4%/D≤8%）+ 单孔直径验收；分散气孔对疲劳影响相对较小。",
       "limits": {
-        "B": {"max_pore": 0.5, "formula": "单孔 d≤0.5 mm 或 0.05t；截面气孔率 ≤2%"},
-        "C": {"max_pore": 0.5, "formula": "单孔 d≤0.5 mm 或 0.1t；截面气孔率 ≤4%"},
-        "D": {"max_pore": 3.0, "formula": "单孔 d≤0.5 mm 或 0.2t，最大 3 mm；截面气孔率 ≤8%"}
+        "B": {"max_pore": 0.5, "pore_rate": 2.0, "formula": "单孔 d≤0.5 mm 或 0.05t；截面气孔率 ≤2%"},
+        "C": {"max_pore": 0.5, "pore_rate": 4.0, "formula": "单孔 d≤0.5 mm 或 0.1t；截面气孔率 ≤4%"},
+        "D": {"max_pore": 3.0, "pore_rate": 8.0, "formula": "单孔 d≤0.5 mm 或 0.2t，最大 3 mm；截面气孔率 ≤8%"}
       }
     },
     {

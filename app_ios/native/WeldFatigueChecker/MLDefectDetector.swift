@@ -1,18 +1,29 @@
 // MLDefectDetector.swift
-// 阶段2：Core ML 实例分割模型接入，替换阶段0 的纯 CV 规则（PhotoDefectDetector）。
+// 阶段2：YOLOv8 检测模型（Core ML .mlpackage）接入，替换阶段0 的纯 CV 规则（PhotoDefectDetector）。
 //
 // 设计原则：
 //  - 与 PhotoDefectDetector 同接口 `detect(in:) -> [DetectedDefect]`，上层「自动标注」逻辑零改动。
 //  - 模型不可用（未训练 / 未打包进 IPA / 推理异常）时，自动回退到 PhotoDefectDetector（CV 规则）。
 //  - 保留 LiDAR 路线（余高 / 咬边深度由 WeldProfileAnalyzer + LiDARWeldScanSheet 负责，本模块不涉及）。
-//  - 推理结果直接产出 App 内部 type（undercut/porosity/excess_weld_metal/crack/overlap/linear_misalignment），
+//  - 推理结果直接产出 App 内部 type（undercut/porosity/crack/overlap/unfused），
 //    因此下游 ISO5817Grader 评级与照片框标注无需任何改动。
 //
-// 训练产物接入方式：
-//  1) 用 Create ML → Instance Segmentation 训练（见 ml/TRAINING_GUIDE.md），导出 WeldDefectModel.mlmodel。
-//  2) 把 WeldDefectModel.mlmodel 加入 Xcode 工程，勾选 Target Membership（Copy Bundle Resources）。
-//     Xcode 编译后包内生成 WeldDefectModel.mlmodelc。
-//  3) 训练时的类别名必须与下方 labelMap 的 key 对齐（class_labels.txt 已含这些英文 type）。
+// 训练产物接入方式（与旧 Create ML 实例分割路线不同，此处为 YOLOv8 检测）：
+//  1) AI Studio 上用 Ultralytics YOLOv8n 训练（ml/weld_train.py），导出 Core ML：
+//       model.export(format='coreml', nms=True, quantize='w8a16', imgsz=640)
+//       # Ultralytics 8.4.x：CoreML 不收 data=，int8 已废弃；唯一可用量化档为 w8a16
+//       # （INT8 权重 + 16-bit 激活，权重-only，~3.1MB，跑 Neural Engine）。
+//     产物 WeldDefectModel.mlpackage（YOLO 检测输出，非实例分割掩膜）。
+//  2) 把 WeldDefectModel.mlpackage 加入 Xcode 工程，勾选 Target Membership（Copy Bundle Resources）。
+//     Xcode 编译后包内生成 WeldDefectModel.mlmodelc，运行时由 compiledModelURL 找到。
+//  3) 训练类别顺序必须与下方 classNames 完全一致（Ultralytics 按 data.yaml names 导出）：
+//     ['porosity','crack','undercut','overlap','unfused']。
+//
+// Core ML 输出解析（YOLOv8 + nms=True 导出，VNCoreMLRequest 返回）：
+//  - 'coordinates' : MLMultiArray (M, 4)，归一化 [x_center, y_center, width, height]，范围 0..1。
+//  - 'confidence'  : MLMultiArray (M, num_classes)，每个检测的类分数（sigmoid 后 0..1）。
+//  NMS 已在模型内完成（nms=True），故 runModel 不再重复做 NMS（避免丢框）。
+//  若改用 nms=False 导出，请取消 runModel 末尾的 nms(...) 调用。
 //
 // 说明：本环境无 Mac，无法编译验证；已对每一步做 try/catch 与空值守卫，
 //       任何解析异常都会回退 CV，因此即便字段名与你的模型略有出入也不会让 App 崩溃。
@@ -29,25 +40,41 @@ struct MLDefectDetector {
     /// 模型是否已可用（已编译且能被 Bundle 找到）。用于在 UI 提示当前走哪条路线。
     static var isModelAvailable: Bool { compiledModelURL != nil }
 
-    /// 置信度阈值：实例分割输出低于此值的检测框丢弃。训练后按 mAP 调参（建议 0.5~0.7）。
-    static var confidenceThreshold: Double = 0.5
+    /// 置信度阈值：YOLO 类分数低于此值的检测框丢弃。训练后按 mAP/召回调参（建议 0.4~0.5，
+    /// 偏低有利于提升裂纹/咬边等少样本类的召回，漏报比误报更危险）。
+    static var confidenceThreshold: Double = 0.45
 
-    /// 模型文件名（不含扩展名）。编译后为 .mlmodelc，开发期直接拖入为 .mlmodel。
+    /// 按类分置信度阈值：少数类(crack/undercut)降阈值保召回，porosity 升阈值压误报。
+    /// 初值基于 120 轮增强版验证集标定（2026-09-27）。
+    private static let perClassConfidenceThreshold: [String: Double] = [
+        "porosity":  0.45,
+        "crack":     0.30,
+        "undercut":  0.30,
+        "overlap":   0.45,
+        "unfused":   0.40,
+    ]
+
+    /// 模型文件名（不含扩展名）。编译后为 .mlmodelc，开发期直接拖入为 .mlpackage。
     private static let modelFileName = "WeldDefectModel"
 
-    // 模型输出 label（Create ML 训练类名） → App 内部 type
+    // 视觉模型训练的 5 类（顺序必须与训练 data.yaml names 完全一致，Ultralytics 按此索引）。
+    // TARGET_CLASSES = ['porosity','crack','undercut','overlap','unfused']
+    // confidence 向量 argmax 索引 i 即对应 classNames[i]。
+    private static let classNames = ["porosity", "crack", "undercut", "overlap", "unfused"]
+
+    // YOLO 类名 / 同义名 → App 内部 type（下游 ISO5817Grader 直接用 type 评级）。
+    // 余高 excess_weld_metal 由 LiDAR 几何计算，不进视觉模型，此处不列。
     private static let labelMap: [String: String] = [
-        "undercut": "undercut",
-        "porosity": "porosity",
-        "pore": "porosity",
-        "excess_weld_metal": "excess_weld_metal",
-        "excess": "excess_weld_metal",
-        "excess_reinforcement": "excess_weld_metal",
-        "crack": "crack",
+        "porosity":  "porosity",
+        "pore":      "porosity",
+        "air-hole":  "porosity",
+        "crack":     "crack",
         "crater_crack": "crack",
-        "overlap": "overlap",
-        "linear_misalignment": "linear_misalignment",
-        "misalignment": "linear_misalignment"
+        "undercut":  "undercut",
+        "bite-edge": "undercut",
+        "overlap":   "overlap",
+        "unfused":   "unfused",
+        "lack_of_fusion": "unfused"
     ]
 
     // MARK: - 入口
@@ -75,108 +102,110 @@ struct MLDefectDetector {
     // MARK: - 模型定位
 
     private static var compiledModelURL: URL? {
-        // 优先已编译的 .mlmodelc（Xcode 编译 .mlmodel 后的产物）
+        // 优先已编译的 .mlmodelc（Xcode 编译 .mlpackage 后的产物）
         if let c = Bundle.main.url(forResource: modelFileName, withExtension: "mlmodelc") { return c }
-        // 开发期：未编译的 .mlmodel 直接拖入包内
+        // 开发期：未编译的 .mlmodel 直接拖入包内（.mlpackage 走 Xcode 编译，不会到这）
         if let m = Bundle.main.url(forResource: modelFileName, withExtension: "mlmodel"),
            let c = try? MLModel.compileModel(at: m) { return c }
         return nil
     }
 
-    // MARK: - Core ML 推理（Create ML 实例分割 + Vision）
+    // MARK: - Core ML 推理（YOLOv8 检测 + Vision）
 
-    /// 运行实例分割模型，返回归一化框 + App type。任何异常抛出让上层回退 CV。
+    /// 运行 YOLOv8 检测模型（Core ML NMS 导出），返回归一化框 + App type。
+    /// 任何异常抛出让上层回退 CV。
     private static func runModel(at url: URL, image: UIImage, maxCount: Int) throws -> [DetectedDefect] {
         guard let cg = image.cgImage else { return [] }
-        let model = try MLModel(contentsOf: url)
+
+        // Neural Engine 优先（iOS 16+），老设备回退默认配置，避免与相机预览争 GPU 导致抖动。
+        let model: MLModel
+        if #available(iOS 16.0, *) {
+            let cfg = MLModelConfiguration()
+            cfg.computeUnits = .cpuAndNeuralEngine
+            model = try MLModel(contentsOf: url, configuration: cfg)
+        } else {
+            model = try MLModel(contentsOf: url)
+        }
+
         let vnModel = try VNCoreMLModel(for: model)
         let request = VNCoreMLRequest(model: vnModel)
+        // scaleFill：原图非等比拉伸到 640×640 模型输入；YOLO 输出归一化坐标直接对应原图
+        // （拉伸逆映射恰好还原），故框位置正确（形状可能轻微失真，不影响分类/定位与尺寸换算）。
         request.imageCropAndScaleOption = .scaleFill
 
         let handler = VNImageRequestHandler(cgImage: cg, options: [:])
         try handler.perform([request])
 
-        // 多输出实例分割：每个输出是 results 中的一个 VNCoreMLFeatureValueObservation，
-        // 通过 featureName 区分（Create ML 标准字段 confidence / mask / label）。
         guard let results = request.results else { return [] }
-        var confMA: MLMultiArray?, maskMA: MLMultiArray?, labelMA: MLMultiArray?, labelStr: String?
+
+        // 收集 YOLO NMS 双输出：coordinates (M,4) + confidence (M, nc)。
+        var coordsMA: MLMultiArray?
+        var confMA: MLMultiArray?
         for obs in results {
             guard let fv = obs as? VNCoreMLFeatureValueObservation else { continue }
+            let ma = fv.featureValue.multiArrayValue
             switch fv.featureName {
-            case "confidence": confMA = fv.featureValue.multiArrayValue
-            case "mask":       maskMA = fv.featureValue.multiArrayValue
-            case "label":
-                if let ma = fv.featureValue.multiArrayValue { labelMA = ma }
-                else if fv.featureValue.type == .string { labelStr = fv.featureValue.stringValue }
-            default: break
-            }
-        }
-        guard let confVal = confMA, let maskVal = maskMA else { return [] }
-        let count = Int(confVal.shape[0].intValue)
-        guard count > 0 else { return [] }
-
-        let imgW = cg.width, imgH = cg.height
-        let maskShape = maskVal.shape
-        guard maskShape.count >= 3 else { return [] }
-        let mH = Int(maskShape[1].intValue)
-        let mW = Int(maskShape[2].intValue)
-        let classLabels = (model.modelDescription.classLabels as? [String]) ?? []
-
-        let strideHW = mH * mW
-        var cand: [(rect: CGRect, type: String, pixelSize: CGSize, score: Double)] = []
-        for i in 0 ..< count {
-            let score = confVal[i].doubleValue
-            guard score >= confidenceThreshold else { continue }
-
-            var type = "defect"
-            if let la = labelMA {
-                let idx = Int(la[i].intValue)
-                if !classLabels.isEmpty, idx >= 0, idx < classLabels.count {
-                    type = labelMap[classLabels[idx].lowercased()] ?? "defect"
+            case "coordinates": coordsMA = ma
+            case "confidence":  confMA = ma
+            default:
+                // 形状兜底：featureName 不符时按形状推断（(M,4) 坐标 / (M,nc) 置信）
+                if let ma, ma.shape.count == 2 {
+                    if ma.shape[1].intValue == 4 { coordsMA = coordsMA ?? ma }
+                    else if ma.shape[1].intValue == classNames.count { confMA = confMA ?? ma }
                 }
-            } else if let s = labelStr {
-                type = labelMap[s.lowercased()] ?? "defect"
             }
+        }
+        guard let coords = coordsMA, let conf = confMA else { return [] }
 
-            guard let box = bboxFromMask(maskVal, instance: i, base: i * strideHW,
-                                         H: mH, W: mW, imgW: imgW, imgH: imgH) else { continue }
-            cand.append((box.rect, type, box.pixelSize, score))
+        let count = Int(coords.shape[0].intValue)
+        let nc = Int(conf.shape[1].intValue)
+        guard count > 0, nc == classNames.count else { return [] }
+
+        let imgW = Double(cg.width), imgH = Double(cg.height)
+
+        var out: [(rect: CGRect, type: String, pixelSize: CGSize, score: Double)] = []
+        for i in 0 ..< count {
+            // confidence[i] = (nc,) 类分数向量，取 argmax 作为类别与分数
+            var best = -1, bestScore = 0.0
+            for c in 0 ..< nc {
+                let s = conf[i * nc + c].doubleValue
+                if s > bestScore { bestScore = s; best = c }
+            }
+            let clsName = (best < classNames.count) ? classNames[best] : nil
+            let thresh = (clsName != nil) ? (Self.perClassConfidenceThreshold[clsName!] ?? confidenceThreshold) : confidenceThreshold
+            guard best >= 0, bestScore >= thresh else { continue }
+
+            // coordinates[i] = (4,) 归一化 [x_center, y_center, width, height]
+            let cx = coords[i * 4 + 0].doubleValue
+            let cy = coords[i * 4 + 1].doubleValue
+            let w  = coords[i * 4 + 2].doubleValue
+            let h  = coords[i * 4 + 3].doubleValue
+
+            let x = cx - w / 2
+            let y = cy - h / 2
+            // 裁剪到 [0,1] 防止越界
+            let minX = max(0.0, min(1.0, x))
+            let minY = max(0.0, min(1.0, y))
+            let maxX = max(0.0, min(1.0, x + w))
+            let maxY = max(0.0, min(1.0, y + h))
+            let rect = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+            guard rect.width > 0, rect.height > 0 else { continue }
+
+            let type: String = (best < classNames.count) ? (labelMap[classNames[best]] ?? classNames[best]) : "defect"
+            let pixelSize = CGSize(width: w * imgW, height: h * imgH)
+            out.append((rect, type, pixelSize, bestScore))
         }
 
-        // 非极大抑制（IoU>0.6 保留高分框），再截断 maxCount
-        let kept = nms(candidates: cand, iouThresh: 0.6)
-        return kept.prefix(maxCount).map { d in
+        // 可选：若改用 nms=False 导出，取消下一行注释做应用层 NMS（iouThresh 0.6）。
+        // let kept = nms(candidates: out, iouThresh: 0.6)
+        // return kept.prefix(maxCount).map { d in DetectedDefect(rect: d.rect, type: d.type, pixelSize: d.pixelSize) }
+
+        return out.prefix(maxCount).map { d in
             DetectedDefect(rect: d.rect, type: d.type, pixelSize: d.pixelSize)
         }
     }
 
-    /// 从 [N,H,W] 概率掩膜的第 i 个实例提取像素级 bbox，并换算到原图归一化坐标与像素尺寸。
-    private static func bboxFromMask(_ mask: MLMultiArray, instance: Int, base: Int,
-                                     H: Int, W: Int, imgW: Int, imgH: Int)
-        -> (rect: CGRect, pixelSize: CGSize)? {
-        var minX = W, minY = H, maxX = 0, maxY = 0, cnt = 0
-        for y in 0 ..< H {
-            for x in 0 ..< W {
-                let v = mask[base + y * W + x].doubleValue
-                if v >= 0.5 {
-                    cnt += 1
-                    if x < minX { minX = x }; if x > maxX { maxX = x }
-                    if y < minY { minY = y }; if y > maxY { maxY = y }
-                }
-            }
-        }
-        guard cnt > 8 else { return nil }   // 掩膜过小，视为噪声
-        // 掩膜分辨率 (mW×mH) → 原图 (imgW×imgH) 的缩放
-        let sx = Double(imgW) / Double(max(1, W))
-        let sy = Double(imgH) / Double(max(1, H))
-        let pMinX = Double(minX) * sx, pMinY = Double(minY) * sy
-        let pW = Double(maxX - minX + 1) * sx, pH = Double(maxY - minY + 1) * sy
-        let rect = CGRect(x: pMinX / Double(imgW), y: pMinY / Double(imgH),
-                          width: pW / Double(imgW), height: pH / Double(imgH))
-        return (rect, CGSize(width: pW, height: pH))
-    }
-
-    // MARK: - 非极大抑制
+    // MARK: - 非极大抑制（仅 nms=False 导出时使用）
 
     private static func nms(candidates: [(rect: CGRect, type: String, pixelSize: CGSize, score: Double)],
                             iouThresh: Double) -> [(rect: CGRect, type: String, pixelSize: CGSize, score: Double)] {

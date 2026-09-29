@@ -60,9 +60,13 @@ struct PackLimit: Codable {
     let ref: String?
     let maxAbs: Double?
     let maxPore: Double?
+    let poreRate: Double?
+    let permitted: Bool?
+    let add: Double?
     let formula: String?
     enum CodingKeys: String, CodingKey {
-        case value, ref, maxAbs = "max_abs", maxPore = "max_pore", formula
+        case value, ref, maxAbs = "max_abs", maxPore = "max_pore", poreRate = "pore_rate"
+        case permitted, add, formula
     }
 }
 
@@ -361,7 +365,9 @@ final class StandardPackRegistry {
         (a?.imperfections ?? []).forEach { it in
             var limits: [String: IsoLimit] = [:]
             (it.limits ?? [:]).forEach { lv, l in
-                limits[lv] = IsoLimit(value: l.value, ref: l.ref, maxAbs: l.maxAbs, maxPore: l.maxPore)
+                limits[lv] = IsoLimit(value: l.value, ref: l.ref, maxAbs: l.maxAbs,
+                                      maxPore: l.maxPore, poreRate: l.poreRate,
+                                      permitted: l.permitted, add: l.add)
             }
             imps.append(ImperfectionSpec(type: it.type, label: it.label,
                                          fatigueRelevant: it.fatigueRelevant ?? false, limits: limits))

@@ -1,0 +1,5 @@
+porosity
+crack
+undercut
+overlap
+unfused

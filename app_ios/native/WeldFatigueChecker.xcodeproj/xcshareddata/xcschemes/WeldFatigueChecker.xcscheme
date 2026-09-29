@@ -14,7 +14,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "000000000000000000100044"
+               BlueprintIdentifier = "000000000000000000100046"
                BuildableName = "WeldFatigueChecker.app"
                BlueprintName = "WeldFatigueChecker"
                ReferencedContainer = "container:WeldFatigueChecker.xcodeproj">
@@ -37,7 +37,7 @@
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       launchStyle = "0"
       useCustomWorkingDirectory = "NO"
-      ignoresPersistentStateOnLaunch = "NO"
+      ignoresPersistentStateOnLaunch = "YES"
       debugDocumentVersioning = "YES"
       debugServiceExtension = "internal"
       allowLocationSimulation = "YES">
@@ -45,7 +45,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "000000000000000000100044"
+            BlueprintIdentifier = "000000000000000000100046"
             BuildableName = "WeldFatigueChecker.app"
             BlueprintName = "WeldFatigueChecker"
             ReferencedContainer = "container:WeldFatigueChecker.xcodeproj">
@@ -62,7 +62,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "000000000000000000100044"
+            BlueprintIdentifier = "000000000000000000100046"
             BuildableName = "WeldFatigueChecker.app"
             BlueprintName = "WeldFatigueChecker"
             ReferencedContainer = "container:WeldFatigueChecker.xcodeproj">

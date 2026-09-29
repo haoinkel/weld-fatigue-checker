@@ -6,8 +6,8 @@ struct ContentView: View {
     var body: some View {
         TabView {
             PhotoCheckView().tabItem { Label("外观检查", systemImage: "camera") }
-            DesignReviewView().tabItem { Label("3D 设计", systemImage: "cube") }
-            Model3DView().tabItem { Label("3D 模型", systemImage: "square.stack.3d.up") }
+            DesignReviewView().tabItem { Label("细部设计", systemImage: "cube") }
+            Model3DView().tabItem { Label("STEP 模型", systemImage: "square.stack.3d.up") }
             LoadsAndResultView().tabItem { Label("荷载/结果", systemImage: "function") }
             StandardsView().tabItem { Label("标准包", systemImage: "books.vertical") }
         }
@@ -21,6 +21,7 @@ struct ContentView: View {
 struct LoadsAndResultView: View {
     @EnvironmentObject var store: Store
     @Environment(\.horizontalSizeClass) private var hSize
+    @State private var showHistory = false
 
     var body: some View {
         Group {
@@ -115,11 +116,31 @@ struct LoadsAndResultView: View {
     }
 
     private var computeButton: some View {
-        Button { store.run() } label: {
-            Label("计算评估", systemImage: "bolt.fill")
-                .frame(maxWidth: .infinity)
+        HStack(spacing: 10) {
+            Button { store.run() } label: {
+                if store.isComputing {
+                    ProgressView().tint(.white).frame(maxWidth: .infinity)
+                } else {
+                    Label("计算评估", systemImage: "bolt.fill")
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .buttonStyle(TechButtonStyle())
+            .disabled(store.isComputing)        // C1：评估进行中禁止重复触发
+            .accessibilityLabel("计算疲劳评估")
+            .accessibilityHint(store.isComputing ? "评估计算中，请稍候" : "根据荷载参数与已识别缺陷计算疲劳利用率")
+
+            Button {
+                showHistory = true
+            } label: {
+                Image(systemName: "clock")
+            }
+            .buttonStyle(TechButtonStyle(filled: false))
+            .accessibilityLabel("查看检测历史记录")
         }
-        .buttonStyle(TechButtonStyle())
+        .sheet(isPresented: $showHistory) {
+            HistorySheet().environmentObject(store)
+        }
     }
 }
 

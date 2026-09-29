@@ -120,31 +120,74 @@ from coremltools.models import MLModel
 
 ## 5. 接入 App（替换 CV 规则，保留 LiDAR）—— 已落地
 
+> ⚠️ **路线已切换为 YOLOv8 检测**（训练见 `ml/CLOUD_TRAINING.md`），不再是 Create ML 实例分割。
+> `MLDefectDetector.swift` 已重写为解析 YOLOv8 + NMS 的 Core ML 双输出（`coordinates`/`confidence`），
+> 加载走 Neural Engine（`cpuAndNeuralEngine`），保留 ROI 闸门与 LiDAR 余高路线不变。以下接入步骤按 YOLOv8 为准。
+>
 > 阶段2 代码已写入工程：`app_ios/native/WeldFatigueChecker/MLDefectDetector.swift`，
 > 并在 `Views/PhotoCheckView.swift` 增加了「使用 AI 模型识别」开关（默认开）。
 > 下面是把训练好的模型接进 App 的最后一步。
 
-1. **导出模型时文件名必须为 `WeldDefectModel.mlmodel`**（与 `MLDefectDetector.modelFileName` 一致）。
-   拖入 Xcode 工程、勾选 Target Membership（Copy Bundle Resources），Xcode 编译后包内生成
-   `WeldDefectModel.mlmodelc`。
-   - ⚠️ 代码用**通用 `MLModel(contentsOf:)` + Vision `VNCoreMLRequest`** 加载，**不依赖** Xcode
-     自动生成的 `WeldDefectModel.swift` 包装类，所以标签名/字段名以模型实际输出为准（见第 3 步）。
-   - ⚠️ 若你导出时用了别的文件名，改 `MLDefectDetector.swift` 顶部 `private static let modelFileName`
-     与之对应即可。
+---
+
+### 5.0 扩充样本：多源合并 + 增强（下次重训必读）
+
+**本次训练聚焦 MAG 焊接工艺**：优先采用 MAG/GMAW 焊道可见光数据。LoHi-WELD（源3）即 MAG 机器人焊道集，是 MAG 聚焦的**首选补充源**；huangyebiaoke（源1）为基础源，工艺未明，作为通用兜底。
+
+当前模型最弱的是 **crack(119)** 与 **undercut(35)** 两个少数类，iPad 实测 recall 风险最大。
+`ml/weld_train.py` 已改为**多源合并**，重训时自动把多个数据集统一映射成 5 类 YOLO，
+任一源缺失即跳过（单源也能训）。
+
+**数据源（必须是表面可见光，X 射线/RT 一律排除）：**
+
+| 源 | 目录 | 获取方式 | 类别映射 | 许可 |
+|---|---|---|---|---|
+| 1. huangyebiaoke/steel-pipe-weld-defect-detection | `raw/` | 脚本自动 ghproxy 下载 | air-hole→porosity, crack→crack, bite-edge→undercut, overlap→overlap, unfused→unfused | — |
+| 2. JIAN SONG「焊接缺陷」(Roboflow) | `raw_jian/` | **手动**：Roboflow 导出 YOLO zip → 分卷上传 AI Studio 解压到此 | 咬bian/咬边→undercut, 气孔→porosity, 焊瘤→overlap, 裂纹→crack | Public Domain |
+| 3. **LoHi-WELD (MAG 聚焦首选源, IEEE Access 2024, GMAW/MAG 机器人焊道可见光, 3022张)** | `raw_lohi/` | **AI Studio 云端 gdown**：`gdown 1pXeEnREfV_MYcL5MY2vkd9njBm_blPUK -O raw_lohi.zip && unzip -o raw_lohi.zip -d raw_lohi`（本地/沙箱被墙 502，须在训练环境内执行）；有则启用，无则跳过 | pores→porosity, deposits→overlap, discontinuities→unfused, stains→丢弃 | 免费可商用(须引用) |
+| 4. kunkun-vhmx2/weld (Roboflow) | `raw_kunkun/` | **手动**：Roboflow 导出 YOLO zip → 分卷上传 AI Studio 解压到此；精细5类，直接补 crack | Crack→crack, Lack Of Fusion→unfused, Lack Of Penetration→unfused, Porosity→porosity, Slag Inclusion→丢弃 | CC BY 4.0 |
+
+> ⚠️ 已**剔除**的候选（不可靠/不可下/不兼容）：
+> - `graylin2025/datasets_sl` 只是数据集**索引页**，焊接条目托管在 mbd.pub 网盘，无类名、无法确认可见光 → 无法用 ghproxy 自动化下载。
+> - `QQ767172261/...6000-sheets` 仓库**只有训练代码、不含真实数据**（6000 图需另下，且未确认可见光）。
+> - `weld-defects-mlopr`（Roboflow, 5198图）仅 **3 粗类 Defect/Bad Weld/Good Weld**，无法细分到 crack/undercut 等5类，对精细模型几乎零增益 → 排除。
+> - `Welding Data Set v3`（Roboflow）标注为 **Semantic Segmentation（分割 mask）**，非 YOLO 检测框，直接喂入会生成错误框 → 排除（除非另写 seg→bbox 转换）。
+> - **Roboflow 整站在国内被墙**（账号/网页打不开、下载端点 403，2026-09-26 核实）：故 `JIAN SONG`、`kunkun` 两个 Roboflow 源在无代理/VPN 时**均无法下载**。
+> - **Google Drive 同样被墙**（本地与沙箱均 502 隧道失败）：故 LoHi-WELD 数据无法从本机/沙箱拉取，只能在【AI Studio 云端】用 `gdown` 绕过（文件ID `1pXeEnREfV_MYcL5MY2vkd9njBm_blPUK` = 图像集）。
+> - **HuggingFace 也被墙（502）**：HF 上的焊接集（如 `rikkarth/welding-defect-object-detection`、`jparedesDS/...`）即便可达也多为粗类(Defect/Good/Bad Weld)，无法细分到5类 → 不采用。
+> - **Kaggle 焊接集不匹配**：搜到的只有 `Severstal`（钢板表面缺陷、RLE 分割掩码格式、非焊道），其余多为 X 射线；无干净的 MAG 焊道可见光检测集 → 不采用。
+> - `firc-dataset` 等"免费"焊接集实为 mbd.pub/CSDN 付费引流、仓库不含真实数据。当前网络下**没有免费可达的可见光裂纹数据集可本机下载**。
+
+**内置增强（零外源依赖，当前唯一确定可用的补强手段）：**
+- 训练 `copy_paste=0.2`（Ultralytics 原生）：把缺陷 cutout 随机贴到干净焊道背景，对少数类最有效。
+- 训练集对 `crack`/`undercut` **过采样**到中位类数量（复制含该类框的图片）。
+- 验证集保持原始分布（仅训练集增广），避免指标虚高。
+- **结论**：无代理时直接 `%run weld_train.py`（仅 源1 + 内置增强）即可。若想引入 MAG 数据，**优先在 AI Studio 内用 `gdown` 拉 LoHi-WELD**（见源3），其余 Roboflow 源需代理/VPN 才能放下 `raw_jian/`/`raw_kunkun/`。
+
+**重训步骤：** 把更新后的 `ml/weld_train.py` 上传 AI Studio（或复用 `work/`），
+按需把 JIAN SONG / LoHi-WELD / kunkun 解压到 `raw_jian/` / `raw_lohi/` / `raw_kunkun/`，`%run weld_train.py` 即可；
+训练完自动导出 `WeldDefectModel.mlpackage`（注意用 `model` 当前指向的带编号权重，勿硬编码旧目录）。
+
+---
+
+1. **导出模型文件名必须为 `WeldDefectModel.mlpackage`**（与 `MLDefectDetector.modelFileName` 一致）。
+   把它放到 `WeldFatigueChecker/` **根目录**（不要放进 `Resources/`，Resources 是 folder reference 不编译内部）。
+   `tools/gen_xcodeproj.py` 会自动把它作为编译资源引用，Xcode 编译后包内生成 `WeldDefectModel.mlmodelc`，
+   运行时由 `compiledModelURL` 找到。若改了文件名，改 `MLDefectDetector.swift` 顶部 `modelFileName` 对应即可。
 2. `MLDefectDetector.detect(in:)` 已与 `PhotoDefectDetector.detect` **同接口同返回**
    （`[DetectedDefect]`），`PhotoCheckView.autoAnnotate` 已改为调用它 —— 上层零改动。
    模型缺失/推理抛错时**自动回退 CV 规则**，因此未放模型也能正常跑（此时开关显示「未加载→CV」）。
-3. **模型输出字段必须匹配**（Create ML Instance Segmentation 标准三件套）：
-   - `confidence`：实例分数（MLMultiArray [N]），低于 `MLDefectDetector.confidenceThreshold`(默认0.5) 丢弃。
-   - `label`：类别索引（MLMultiArray [N]，映射到 `model.modelDescription.classLabels`）或字符串序列。
-   - `mask`：概率掩膜（MLMultiArray [N, H, W]，>0.5 取像素），代码由掩膜算 bbox 与像素尺寸。
-   - 类别名 → App type 的映射见 `MLDefectDetector.labelMap`（key 含
-     `undercut/porosity/excess_weld_metal/crack/overlap/linear_misalignment` 及常见同义名）。
+3. **模型输出解析（YOLOv8 + nms=True 导出的 Core ML 双输出，已重写 `MLDefectDetector.runModel` 接住）**：
+   - `coordinates`：检测框坐标（MLMultiArray [M, 4]），归一化 `[x_center, y_center, width, height]`，范围 0..1。
+   - `confidence`：类分数（MLMultiArray [M, num_classes]），取 argmax 作为类别与分数，低于
+     `MLDefectDetector.confidenceThreshold`(默认 0.45) 丢弃。NMS 已在模型内完成，runModel 不再重复。
+   - 类别顺序必须与训练 `data.yaml` 的 `names` 一致：`['porosity','crack','undercut','overlap','unfused']`
+     （argmax 索引 0..4 直接对应，见 `MLDefectDetector.classNames`）。
+   - 类名 → App type 的映射见 `MLDefectDetector.labelMap`（已含 `porosity/crack/undercut/overlap/unfused`
+     及常见同义名如 `pore/air-hole/crater_crack/bite-edge/lack_of_fusion`）。余高 `excess_weld_metal`
+     由 LiDAR 单独算，不进视觉模型。
 4. **LiDAR 余高/咬边深度路线保持不变**（`WeldProfileAnalyzer` + `LiDARWeldScanSheet`），
    模型只负责缺陷有无/分类/平面尺寸，不负责高度量测。
-
-> 注意：训练时填入 Create ML 的标签名必须等于 `class_labels.txt`（= App type 名），否则
-> `labelMap` 匹配不到，检测出的缺陷会变成 `defect` 而无法评级。
 
 ---
 

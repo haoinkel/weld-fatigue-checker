@@ -19,6 +19,7 @@ struct IsoLimitEntry: Codable {
     var ref: String?        // "t" = 母材厚度比例；"b" = 焊缝宽度基准
     var max_abs: Double?
     var max_pore: Double?   // 气孔单孔直径上限
+    var pore_rate: Double?  // 气孔截面累计气孔率上限（%，B≤2/C≤4/D≤8）
     var add: Double?
     var formula: String?
 }
@@ -39,8 +40,14 @@ enum ISO5817Grader {
     // 缺陷类型别名：检测器输出名 → ISO 5817 标准 type
     private static let aliases: [String: String] = [
         "crater_crack": "crack",
-        "crack": "crack"
+        "crack": "crack",
+        "unfused": "lack_of_fusion"   // ML 模型输出 unfused，标准库键为 lack_of_fusion
     ]
+
+    /// NDT 免责声明（评级结果页/检测提示统一引用）：明确 App 定位为辅助筛查，不替代认证检测。
+    /// 依据 Hyperion 2026 等研究结论：视觉模型不分配"认证质量等级"，安全关键接头仍须 UT/RT。
+    static let ndtDisclaimer: String =
+        "本结果为 AI 辅助目视(VT)筛查，非质量认证；安全关键焊缝须由持证人员按 ISO 17635 / ISO 5817 用 UT/RT 等补充检测确认。"
 
     // MARK: - 加载
 
@@ -87,6 +94,43 @@ enum ISO5817Grader {
     }
 
     // MARK: - 上限计算
+
+    /// 气孔截面累计气孔率法（ISO 5817 表 2/3）：对一组气孔直径做「双判据」验收。
+    /// ① 单孔最大直径 ≤ max_pore；② 累计气孔率 ≤ pore_rate%。
+    /// 评定区：长度 l = max(12·t, 150 mm)，带宽 = 焊缝宽度 b（缺省 2t）；评定区面积 = l·b。
+    /// 累计气孔率 = Σ(π/4·dᵢ²) / 评定区面积 × 100%。
+    /// - diameters: 各气孔实测直径(mm)
+    /// - level: 目标质量等级（B/C/D）；缺省 "C"
+    /// - returns: (accepted, maxDiameter, singleOK, ratePct, rateLimit, limitText)
+    static func gradePorosity(pores diameters: [Double], t: Double, b: Double? = nil, level: String? = nil)
+        -> (accepted: Bool, maxDiameter: Double, singleOK: Bool, ratePct: Double?, rateLimit: Double?, limitText: String) {
+        guard let d = doc else { return (false, 0, false, nil, nil, "标准数据缺失") }
+        guard let spec = d.imperfections.first(where: { $0.type == "porosity" }) else {
+            return (false, 0, false, nil, nil, "未知缺陷类型: porosity")
+        }
+        let lv = level ?? "C"
+        guard let lim = spec.limits[lv] else { return (false, 0, false, nil, nil, "无等级 \(lv) 定义") }
+        let maxD = diameters.max() ?? 0
+        let singleOK: Bool = lim.max_pore.map { maxD <= $0 } ?? true
+        let l = max(12.0 * t, 150.0)
+        let stripW = b ?? (2.0 * t)
+        let assessArea = l * stripW
+        let totalPoreArea = diameters.reduce(0.0) { $0 + Double.pi / 4.0 * $1 * $1 }
+        let ratePct: Double? = assessArea > 0 ? (totalPoreArea / assessArea * 100.0) : nil
+        let rateLimit = lim.pore_rate
+        let rateOK: Bool = (rateLimit != nil && ratePct != nil) ? (ratePct! <= rateLimit!) : true
+        let accepted = singleOK && rateOK
+        var parts: [String] = []
+        parts.append(String(format: "单孔 d≤%.1fmm：实测最大 %.1fmm（%@）",
+                            lim.max_pore ?? 0, maxD, singleOK ? "通过" : "超差"))
+        if let rl = rateLimit, let rp = ratePct {
+            parts.append(String(format: "累计气孔率≤%.0f%%：实测 %.1f%%（%@）",
+                                rl, rp, rateOK ? "通过" : "超差"))
+        } else if let rp = ratePct {
+            parts.append(String(format: "累计气孔率=%.1f%%", rp))
+        }
+        return (accepted, maxD, singleOK, ratePct, rateLimit, parts.joined(separator: "；"))
+    }
 
     /// 计算某等级验收上限（mm）。nil 表示该等级无法用尺寸判定（如仅有 permitted=false）。
     private static func computeUpper(lim: IsoLimitEntry, t: Double, b: Double?) -> Double? {

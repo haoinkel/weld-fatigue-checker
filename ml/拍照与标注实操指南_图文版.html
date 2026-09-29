@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>拍照与标注实操指南（手机拍照 + 标注流程 · 图文版）</title>
+<style>
+  :root{
+    --bg:#f5f7fa; --card:#fff; --ink:#1f2933; --sub:#52606d;
+    --line:#e4e7eb; --accent:#d9661a; --accent2:#2b6cb0; --ok:#2f855a; --bad:#c0392b; --warn:#b7791f;
+    --chip:#eef2f7;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;line-height:1.7;font-size:15px;}
+  .wrap{max-width:940px;margin:0 auto;padding:32px 22px 64px;}
+  header{background:linear-gradient(135deg,#2b3a4a,#3b5168);color:#fff;border-radius:16px;padding:26px 28px;margin-bottom:26px;}
+  header h1{margin:0 0 6px;font-size:23px;} header p{margin:0;opacity:.85;font-size:14px;}
+  section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 3px rgba(0,0,0,.03);}
+  h2{font-size:18px;margin:0 0 14px;padding-left:12px;border-left:4px solid var(--accent);}
+  h3{font-size:15px;color:var(--accent2);margin:18px 0 8px;}
+  p,li{color:var(--sub);}
+  code{background:var(--chip);padding:2px 6px;border-radius:5px;font-size:13px;color:#b83280;font-family:Consolas,monospace;}
+  table{border-collapse:collapse;width:100%;font-size:13px;margin-top:8px;}
+  table th,table td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top;}
+  table th{background:#f0f4f8;color:var(--ink);}
+  .svgbox{background:#0f172a;border-radius:10px;padding:10px;margin:10px 0;text-align:center;}
+  .note{border-left:4px solid var(--warn);background:#fffaf0;padding:10px 14px;border-radius:0 8px 8px 0;font-size:13px;margin:12px 0;}
+  .ok{border-left-color:var(--ok);background:#f0fff4;} .bad{border-left-color:var(--bad);background:#fdf0ee;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+  .cap{font-size:12px;color:#9aa5b1;text-align:center;margin-top:4px;}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;}
+  .cls{border:1px solid var(--line);border-radius:12px;padding:10px 8px;text-align:center;background:#fbfcfe;}
+  .cls svg{margin-bottom:4px;} .cls .id{font-weight:700;color:var(--accent);font-size:12px;}
+  .cls .en{font-size:13px;color:var(--ink);font-weight:600;} .cls .cn{font-size:13px;color:var(--sub);}
+  .cls .tip{font-size:11px;color:#8a94a6;margin-top:3px;text-align:left;}
+  ol.steps{counter-reset:s;list-style:none;padding:0;}
+  ol.steps li{counter-increment:s;position:relative;padding:8px 0 8px 38px;border-bottom:1px dashed var(--line);}
+  ol.steps li::before{content:counter(s);position:absolute;left:0;top:8px;width:26px;height:26px;
+    background:var(--accent2);color:#fff;border-radius:50%;text-align:center;line-height:26px;font-size:13px;font-weight:700;}
+  .check{list-style:none;padding:0;} .check li{padding:6px 0 6px 30px;position:relative;}
+  .check li::before{content:"☐";position:absolute;left:6px;color:var(--accent);font-size:16px;}
+  footer{text-align:center;color:#9aa5b1;font-size:12px;margin-top:10px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>拍照与标注实操指南</h1>
+  <p>手机拍照要求 + 拍完如何标定 · 图文版 · 面向 WeldFatigueChecker 5 类焊缝缺陷数据集</p>
+</header>
+
+<!-- 1 总体原则 -->
+<section>
+  <h2>一、总体原则（先记住这 4 句）</h2>
+  <div class="grid2">
+    <div class="note ok" style="margin:0"><b>① 拍得清</b><br>缺陷要肉眼可辨，别靠后期"想象"。模糊、过曝、反光的照片模型学不到东西。</div>
+    <div class="note ok" style="margin:0"><b>② 拍得正</b><br>手机尽量垂直焊面，斜着拍会让框变形、尺寸失真。</div>
+    <div class="note ok" style="margin:0"><b>③ 拍得全</b><br>一张图里同类缺陷有多个就都标，别只标最明显的一个。</div>
+    <div class="note ok" style="margin:0"><b>④ 拍得杂</b><br>不同工件、角度、光照都来点，模型才不容易"认死理"。</div>
+  </div>
+</section>
+
+<!-- 2 照片要求 -->
+<section>
+  <h2>二、照片要求清单</h2>
+  <table>
+    <tr><th>项目</th><th>要求</th><th>为什么</th></tr>
+    <tr><td>分辨率</td><td>≥ 1920×1080（建议 4K/1200 万像素以上）</td><td>训练用 640，但高分辨率标注更准、细节更清</td></tr>
+    <tr><td>格式</td><td>JPG / PNG；<b>HEIC 需转 JPG</b></td><td>脚本只认 jpg/jpeg/png/bmp</td></tr>
+    <tr><td>光线</td><td>均匀柔光，无强反光、无浓重阴影</td><td>金属反光会"洗掉"缺陷；阴影会伪造缺陷</td></tr>
+    <tr><td>角度</td><td>垂直焊面 ±15° 内</td><td>斜拍使框与尺寸失真</td></tr>
+    <tr><td>对焦</td><td>焊道区域清晰，无运动模糊</td><td>模糊图无法标注、模型也学不会</td></tr>
+    <tr><td>取景</td><td>焊道占画面 40%~70%，缺陷清晰可见</td><td>太远看不清、太近只剩局部无上下文</td></tr>
+    <tr><td>文件名</td><td>英文/数字，如 <code>weld_001.jpg</code>，无空格中文</td><td>避免跨系统编码乱码</td></tr>
+    <tr><td>数量</td><td>每类 ≥100 张图（少数类 crack/undercut 越多越好）</td><td>配合增强才稳；详见主说明书</td></tr>
+  </table>
+  <div class="note"><b>重要提醒（可见光局限）：</b>气孔、裂纹很多是<strong>皮下/内部</strong>的，普通手机照片看不见。
+  只拍<strong>表面可见</strong>的缺陷；不可见的别硬标（标了也是错的）。裂纹若太细，可用<strong>着色渗透探伤剂</strong>显影后再拍。</div>
+</section>
+
+<!-- 3 怎么拍 -->
+<section>
+  <h2>三、怎么拍（图文）</h2>
+
+  <h3>3.1 摆放与角度</h3>
+  <div class="svgbox">
+  <svg width="100%" viewBox="0 0 560 220">
+    <!-- good -->
+    <text x="20" y="22" fill="#34d399" font-size="13">✓ 正确：手机垂直焊面</text>
+    <rect x="60" y="170" width="160" height="22" rx="3" fill="#64748b"/>
+    <text x="92" y="186" fill="#cbd5e1" font-size="11">焊件</text>
+    <rect x="128" y="60" width="26" height="50" rx="4" fill="#94a3b8"/>
+    <line x1="141" y1="60" x2="141" y2="170" stroke="#34d399" stroke-width="1.5" stroke-dasharray="4 3"/>
+    <text x="160" y="120" fill="#34d399" font-size="12">90°</text>
+    <text x="60" y="40" fill="#cbd5e1" font-size="11">镜头</text>
+    <!-- bad -->
+    <text x="330" y="22" fill="#f87171" font-size="13">✗ 错误：斜角拍摄</text>
+    <rect x="360" y="170" width="160" height="22" rx="3" fill="#64748b"/>
+    <rect x="470" y="70" width="26" height="50" rx="4" fill="#94a3b8" transform="rotate(28 483 95)"/>
+    <line x1="483" y1="95" x2="430" y2="170" stroke="#f87171" stroke-width="1.5" stroke-dasharray="4 3"/>
+    <text x="500" y="120" fill="#f87171" font-size="12">≈30°</text>
+  </svg>
+  <div class="cap">斜拍会让缺陷框拉伸、尺寸失真 → 标注与训练都受影响</div>
+  </div>
+
+  <h3>3.2 光线：柔和均匀 vs 强反光</h3>
+  <div class="grid2">
+    <div class="svgbox">
+      <svg width="100%" viewBox="0 0 260 150">
+        <rect x="10" y="30" width="240" height="90" rx="6" fill="#475569"/>
+        <ellipse cx="130" cy="75" rx="80" ry="34" fill="#64748b"/>
+        <text x="70" y="140" fill="#f87171" font-size="12">✗ 强反光/过曝</text>
+      </svg>
+      <div class="cap">高光"洗掉"缺陷，局部过曝丢失信息</div>
+    </div>
+    <div class="svgbox">
+      <svg width="100%" viewBox="0 0 260 150">
+        <rect x="10" y="30" width="240" height="90" rx="6" fill="#94a3b8"/>
+        <circle cx="90" cy="70" r="5" fill="#334155"/><circle cx="160" cy="95" r="4" fill="#334155"/>
+        <text x="78" y="140" fill="#34d399" font-size="12">✓ 柔光均匀</text>
+      </svg>
+      <div class="cap">缺陷清晰可辨，明暗过渡自然</div>
+    </div>
+  </div>
+  <div class="note">手机拍照<strong>关掉闪光灯</strong>（金属一打就反光）。优先用：阴天自然光、靠窗柔光、或一块 LED 补光板（套柔光罩）。</div>
+
+  <h3>3.3 距离与取景</h3>
+  <div class="svgbox">
+  <svg width="100%" viewBox="0 0 560 170">
+    <!-- too far -->
+    <rect x="20" y="40" width="150" height="100" fill="#1e293b" stroke="#475569"/>
+    <rect x="80" y="80" width="30" height="18" fill="#64748b"/>
+    <text x="40" y="160" fill="#f87171" font-size="12">✗ 太远：缺陷看不清</text>
+    <!-- good -->
+    <rect x="210" y="30" width="150" height="110" fill="#1e293b" stroke="#34d399"/>
+    <rect x="245" y="60" width="80" height="50" fill="#64748b"/>
+    <circle cx="270" cy="80" r="4" fill="#334155"/><circle cx="300" cy="95" r="3" fill="#334155"/>
+    <text x="225" y="160" fill="#34d399" font-size="12">✓ 合适：焊道占 40~70%</text>
+    <!-- too close -->
+    <rect x="400" y="20" width="150" height="130" fill="#1e293b" stroke="#fbbf24"/>
+    <rect x="430" y="40" width="90" height="90" fill="#64748b"/>
+    <text x="415" y="168" fill="#fbbf24" font-size="12">⚠ 太近：只剩局部无上下文</text>
+  </svg>
+  </div>
+
+  <h3>3.4 每类缺陷：拍什么 / 怎么拍</h3>
+  <div class="cards">
+    <div class="cls">
+      <svg width="40" height="40" viewBox="0 0 48 48"><rect x="4" y="14" width="40" height="20" rx="3" fill="#cbd5e1" stroke="#64748b"/><circle cx="16" cy="22" r="3" fill="#475569"/><circle cx="28" cy="26" r="2.4" fill="#475569"/><circle cx="34" cy="20" r="2" fill="#475569"/></svg>
+      <span class="id">id 0</span><span class="en">porosity</span><span class="cn">气孔</span>
+      <span class="tip">拍焊道表面可见的孔洞群；近拍孔洞清晰</span>
+    </div>
+    <div class="cls">
+      <svg width="40" height="40" viewBox="0 0 48 48"><path d="M6 24 L14 22 L20 27 L27 19 L33 26 L42 23" fill="none" stroke="#b91c1c" stroke-width="3" stroke-linejoin="round"/></svg>
+      <span class="id">id 1</span><span class="en">crack</span><span class="cn">裂纹</span>
+      <span class="tip">细裂纹用着色渗透剂显影后拍；沿焊缝/热影响区找</span>
+    </div>
+    <div class="cls">
+      <svg width="40" height="40" viewBox="0 0 48 48"><path d="M4 30 L20 30 L24 24 L28 30 L44 30" fill="none" stroke="#0f766e" stroke-width="3" stroke-linejoin="round"/></svg>
+      <span class="id">id 2</span><span class="en">undercut</span><span class="cn">咬边</span>
+      <span class="tip">拍焊缝与母材交界的凹槽（焊趾处）</span>
+    </div>
+    <div class="cls">
+      <svg width="40" height="40" viewBox="0 0 48 48"><path d="M4 28 L18 28 Q24 16 30 28 L44 28" fill="none" stroke="#b45309" stroke-width="3" stroke-linejoin="round"/></svg>
+      <span class="id">id 3</span><span class="en">overlap</span><span class="cn">焊瘤/过高</span>
+      <span class="tip">拍焊缝上鼓起的多余金属</span>
+    </div>
+    <div class="cls">
+      <svg width="40" height="40" viewBox="0 0 48 48"><line x1="4" y1="24" x2="20" y2="24" stroke="#1e3a8a" stroke-width="4"/><line x1="28" y1="24" x2="44" y2="24" stroke="#1e3a8a" stroke-width="4" stroke-dasharray="3 3"/></svg>
+      <span class="id">id 4</span><span class="en">unfused</span><span class="cn">未熔合</span>
+      <span class="tip">表面未熔合缺口；内部不可见别硬标</span>
+    </div>
+  </div>
+
+  <h3>3.5 常见错误（别踩）</h3>
+  <div class="grid2">
+    <div class="note bad" style="margin:0"><b>✗ 别这样</b><br>• 开闪光灯打金属<br>• 手指/杂物入镜<br>• 一张图只拍半条焊道<br>• 只标最明显的那个缺陷</div>
+    <div class="note ok" style="margin:0"><b>✓ 该这样</b><br>• 柔光无反光<br>• 画面干净只有焊件<br>• 完整焊道+热影响区<br>• 图内每个缺陷都标</div>
+  </div>
+</section>
+
+<!-- 4 拍完怎么标 -->
+<section>
+  <h2>四、拍完照片后怎么标定</h2>
+
+  <h3>4.1 把照片弄到电脑</h3>
+  <p>手机 → 电脑：数据线 / 微信文件传输助手 / 网盘 / AirDrop（iPhone）。统一放进一个文件夹，按 <code>weld_001.jpg</code> 顺序改名（可用批量重命名工具）。</p>
+
+  <h3>4.2 HEIC 转 JPG（iPhone 常见）</h3>
+  <p>iPhone 默认 HEIC，需转 JPG：Windows 照片应用"另存为 JPG"，或用格式工厂 / 在线转换。脚本只认 jpg/jpeg/png/bmp。</p>
+
+  <h3>4.3 选标注工具</h3>
+  <table>
+    <tr><th>工具</th><th>类型</th><th>适合</th><th>说明</th></tr>
+    <tr><td><b>labelImg</b></td><td>桌面软件</td><td>首选，离线</td><td><code>pip install labelimg</code>，选 YOLO 格式直接出 txt</td></tr>
+    <tr><td>makesense.ai</td><td>网页</td><td>不想装软件</td><td>免费、上传即标、导出 YOLO</td></tr>
+    <tr><td>Roboflow</td><td>网页</td><td>团队/自动化</td><td>功能强，但国内需代理</td></tr>
+  </table>
+
+  <h3>4.4 labelImg 实操步骤</h3>
+  <ol class="steps">
+    <li><b>打开</b>：运行 labelImg → Open Dir 选照片文件夹 → 先把格式切到 <b>YOLO</b>（左下角）</li>
+    <li><b>建类</b>：Edit → Edit Labels，按序输入 <code>porosity, crack, undercut, overlap, unfused</code>（顺序=id 0~4）</li>
+    <li><b>画框</b>：按 <code>W</code> 画矩形，紧贴缺陷边缘（别太松也别截断）</li>
+    <li><b>选类</b>：在弹出的列表里点对应类别（或用快捷键 0~4）</li>
+    <li><b>保存</b>：按 <code>Ctrl+S</code>，自动在同目录生成同名 <code>.txt</code></li>
+    <li><b>下一张</b>：按 <code>D</code> 切换，重复 3~5，直到所有图标完</li>
+  </ol>
+  <div class="svgbox">
+  <svg width="100%" viewBox="0 0 460 200">
+    <rect x="10" y="10" width="300" height="180" fill="#1e293b"/>
+    <rect x="70" y="60" width="120" height="70" fill="rgba(248,113,113,.15)" stroke="#f87171" stroke-width="2"/>
+    <text x="120" y="150" fill="#94a3b8" font-size="11">焊道图 + 红框</text>
+    <rect x="330" y="20" width="120" height="160" fill="#0f172a" stroke="#334155"/>
+    <text x="345" y="42" fill="#cbd5e1" font-size="11">类别选择</text>
+    <rect x="345" y="55" width="90" height="18" fill="#1e3a8a"/><text x="352" y="68" fill="#fff" font-size="11">0 porosity</text>
+    <rect x="345" y="80" width="90" height="18" fill="#7f1d1d"/><text x="352" y="93" fill="#fff" font-size="11">1 crack</text>
+    <rect x="345" y="105" width="90" height="18" fill="#0f766e"/><text x="352" y="118" fill="#fff" font-size="11">2 undercut</text>
+    <rect x="345" y="130" width="90" height="18" fill="#78350f"/><text x="352" y="143" fill="#fff" font-size="11">3 overlap</text>
+    <rect x="345" y="155" width="90" height="18" fill="#1e3a8a"/><text x="352" y="168" fill="#fff" font-size="11">4 unfused</text>
+  </svg>
+  <div class="cap">标注界面示意：左图画框，右栏选类（快捷键 0~4）</div>
+  </div>
+
+  <h3>4.5 标注要点</h3>
+  <ul>
+    <li><b>框要贴边</b>：刚好包住缺陷，不要留大空白也不要截断。</li>
+    <li><b>不漏标</b>：一张图里同一类有多个就分别画框，全部标出。</li>
+    <li><b>一框一类</b>：不要把两种缺陷框在一起；不同类型分开画。</li>
+    <li><b>只标 5 类</b>：夹渣、飞溅等不在这 5 类里的，不标（脚本也会自动忽略）。</li>
+    <li><b>坐标范围</b>：生成的 txt 里数字应在 0~1 之间；若出现负数或 >1 说明框超出图外，重画。</li>
+  </ul>
+
+  <h3>4.6 标完检查 + 接入训练</h3>
+  <p>检查：每个 <code>.txt</code> 第一行形如 <code>0 0.512 0.430 0.120 0.090</code>，首位是 0~4。</p>
+  <p>接入：把 <code>images/</code> + <code>labels/</code> + <code>classes.txt</code> 按主说明书放进 <code>raw_mine/</code>，改脚本 2 处，<code>--fresh</code> 重训即可。（详见《数据集自增说明书_图文版》）</p>
+</section>
+
+<!-- 5 检查清单 -->
+<section>
+  <h2>五、快速检查清单</h2>
+  <ul class="check">
+    <li>照片清晰、无模糊、无过曝反光</li>
+    <li>手机垂直焊面 ±15° 内</li>
+    <li>焊道占画面 40~70%，缺陷可见</li>
+    <li>文件名英文数字、无空格中文</li>
+    <li>HEIC 已转 JPG（如适用）</li>
+    <li>每类 ≥100 张（crack/undercut 越多越好）</li>
+    <li>标注用 YOLO 格式，类序 0~4 正确</li>
+    <li>每张图所有缺陷都已标，无漏标</li>
+    <li>txt 坐标均在 0~1 内</li>
+    <li>已放入 raw_mine/ 并改脚本 2 处、--fresh 重训</li>
+  </ul>
+</section>
+
+<footer>配套：数据集自增说明书_图文版.html ｜ 数据集自增模板_5类缺陷.md ｜ 主操作说明书</footer>
+
+</div>
+</body>
+</html>

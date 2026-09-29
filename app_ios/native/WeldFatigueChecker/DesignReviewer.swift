@@ -17,27 +17,38 @@ enum DesignReviewer {
     /// 由几何/传力属性映射到 EN1993-1-9 细节 id
     /// 注意：ID 与 v5 校正版数据（表 8.4/8.5 权威 W 系列）保持一致；
     /// 旧占位 ID 经 KnowledgeBank.findDetail 的别名映射仍可解析。
+    ///
+    /// 扩展后覆盖表 8.3/8.4/8.5 的完整几何分级维度：
+    ///   · 对接(8.3)：打磨齐平 → 125，焊态 → 100
+    ///   · 传力十字/T/角接头(8.5)：焊趾 80；部分熔透/角焊根部另按 36* 双评估（见 R17）
+    ///   · 横向非承载附件(8.4)：端部打磨 → 80，否则 L≤100 焊态 → 71
+    ///   · 纵向附件(8.4 detail1~3)：按 r/L 分级 90/71/50
     static func matchDetail(_ d: DesignInput) -> String? {
-        switch (d.jointType, d.weldType, d.loadingDirection, d.loadCarrying) {
-        case (_, "butt", _, _):
+        // 对接焊缝（表8.3）
+        if d.weldType == "butt" {
             return d.groundFlush ? "W_BUTT_GROUND" : "W_BUTT_ASWELD"
-        case (_, "fillet", "longitudinal", _):
-            return "W_LA_LONG_50"          // 纵向附件（焊态）表8.4 detail3
-        case (_, "fillet", "transverse", true):
-            return "W_CRUCIFORM_TOE_80"    // 传力十字/T型接头焊趾 表8.5
-        case (_, "fillet", "transverse", false):
-            return "W_TA_TRANS_71"         // 横向非承载附件 表8.4
-        case ("t_joint", _, _, true), ("cruciform", _, _, true):
-            return "W_CRUCIFORM_TOE_80"
-        case ("t_joint", _, _, false), ("cruciform", _, _, false):
-            return "W_TA_TRANS_71"
-        case ("corner", _, _, _):
-            return "W_TA_TRANS_71"
-        case ("lap", _, _, _):
-            return "W_LAPJOINT_45"         // 搭接接头 表8.5 detail5
-        default:
-            return nil
         }
+        // 传力接头（十字/T/角/承载角焊）→ 表8.5 焊趾失效 FAT80
+        if d.loadCarrying && ["cruciform", "t_joint", "corner", "fillet"].contains(d.jointType) {
+            return "W_CRUCIFORM_TOE_80"
+        }
+        // 搭接接头（表8.5 detail5）
+        if d.jointType == "lap" {
+            return "W_LAPJOINT_45"
+        }
+        // 以下为「非承载附件 / 角焊缝」按走向与几何分级（表8.4）
+        // 横向非承载附件
+        if d.loadingDirection == "transverse" {
+            return d.attachmentToeGround ? "W_TA_TRANS_GROUND_80" : "W_TA_TRANS_71"
+        }
+        // 纵向非承载附件（表8.4 detail1~3）：按 r/L 分级
+        if let L = d.attachmentLengthMm, L > 0, let r = d.transitionRadiusMm, r > 0 {
+            let ratio = r / L
+            if ratio >= 1.0 / 3.0 { return "W_LA_LONG_90" }   // r/L ≥ 1/3 → 90
+            else if ratio >= 1.0 / 6.0 { return "W_LA_LONG_71" } // 1/6 ≤ r/L ≤ 1/3 → 71
+            else { return "W_LA_LONG_50" }                    // 焊态无过渡半径 → 50
+        }
+        return "W_LA_LONG_50"   // 无 r/L 信息时按焊态保守归类
     }
 
     static let rules: [Rule] = [
@@ -149,6 +160,13 @@ enum DesignReviewer {
             finding: "实际焊脚尺寸小于所需喉厚对应焊脚，静强度与疲劳喉部均不足。",
             suggestions: [
                 ImprovementSuggestion(action: "加大焊脚至满足喉厚 a≥0.7×所需焊脚，并重新评估 FAT", raisesFatTo: nil, effort: "中(工艺)")
+            ]),
+        Rule(id: "R17", severity: "high", title: "部分熔透传力接头须双评估根部",
+            condition: { (["cruciform","t_joint"].contains($0.jointType) || ($0.weldType == "fillet" && $0.loadCarrying)) && !$0.fullPenetration },
+            finding: "部分熔透/角焊传力接头，除焊趾(FAT80)外，根部失效须按 FAT36* 双评估（EN1993-1-9 表8.5 detail2/3）。仅判焊趾会高估疲劳能力。",
+            suggestions: [
+                ImprovementSuggestion(action: "改为全熔透焊缝，消除根部失效面", raisesFatTo: 80, effort: "中(改图工艺)"),
+                ImprovementSuggestion(action: "根部按 FAT36* 校核；不满足则全熔透或加厚", raisesFatTo: nil, effort: "中")
             ])
     ]
 
@@ -218,9 +236,12 @@ enum DesignReviewer {
             dr = reviewDesign(design); detailId = dr.detailId ?? vision.detailCandidate
         }
         let fid = detailId ?? "W_TA_TRANS_71"
+        // 先算 ISO 5817 缺陷判定，再回写 FAT（缺陷→FAT 定量回写）
+        let imps = FatigueEngine.evaluateImperfections(params.thickness, params.qualityLevel, vision.imperfections,
+                                                        weldWidthMm: params.weldWidthMm)
         let fc = FatigueEngine.constantAmplitudeCheck(fid, params.deltaSigma, params.nRequired,
-                      improvements: vision.improvementsApplied, gammaMf: params.gammaMf)
-        let imps = FatigueEngine.evaluateImperfections(params.thickness, params.qualityLevel, vision.imperfections)
+                      improvements: vision.improvementsApplied, gammaMf: params.gammaMf,
+                      defectInputs: vision.imperfections, defectResults: imps, thickness: params.thickness)
 
         var plan = (mode == "photo") ? [] : suggestImprovements(design, fatigueFail: !fc.pass)
         if !fc.pass {
@@ -229,7 +250,7 @@ enum DesignReviewer {
         }
         for r in imps where r.fatigueRelevant && r.accepted == false {
             plan.append(PlanItem(priority: "medium", ruleId: "I1", title: "缺陷超差: \(r.label)",
-                action: "「\(r.label)」超 \(params.qualityLevel) 级且位于焊趾，建议打磨改善疲劳", raisesFatTo: nil, effort: "低"))
+                action: "「\(r.label)」超 \(params.qualityLevel) 级且位于焊趾，已折算降低有效 FAT，建议打磨改善疲劳", raisesFatTo: nil, effort: "低"))
         }
         var finalPlan: [PlanItem] = []
         var seen = Set<String>()

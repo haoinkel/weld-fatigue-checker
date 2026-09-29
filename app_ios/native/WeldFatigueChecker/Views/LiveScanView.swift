@@ -96,14 +96,14 @@ struct LiveScanView: View {
                         let longPx = Int(defectMeasurePx(type: d.type, pixelSize: d.pixelSize))
                         ZStack(alignment: .bottom) {
                             Rectangle()
-                                .stroke(Theme.cyan, lineWidth: 2)
-                                .shadow(color: Theme.cyan.opacity(0.8), radius: 4, y: 0)
+                                .stroke(Theme.defect, lineWidth: 2)
+                                .shadow(color: Theme.defect.opacity(0.8), radius: 4, y: 0)
                                 .frame(width: bw, height: bh)
                             Text("\(AnnotationMarker.shortLabel(d.type))  \(longPx)px")
                                 .font(.system(size: 11, weight: .bold))
                                 .foregroundStyle(.black)
                                 .padding(.horizontal, 5).padding(.vertical, 2)
-                                .background(Theme.cyan.opacity(0.9),
+                                .background(Theme.defect.opacity(0.9),
                                              in: RoundedRectangle(cornerRadius: 5))
                                 .offset(y: -bh - 2)
                         }
@@ -229,7 +229,7 @@ struct LiveScanView: View {
                                 Text("#\(i+1) \(AnnotationMarker.shortLabel(d.type)) \(longPx)px")
                                     .font(.caption2).foregroundStyle(.black)
                                     .padding(.horizontal, 8).padding(.vertical, 4)
-                                    .background(Theme.cyan.opacity(0.85), in: Capsule())
+                                    .background(Theme.defect.opacity(0.85), in: Capsule())
                             }
                         }
                         .padding(.horizontal, 8)

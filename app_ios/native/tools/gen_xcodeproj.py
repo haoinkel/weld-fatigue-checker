@@ -6,6 +6,9 @@
 - 加入 Model3D/occt_bridge.mm（Objective-C++ 桥接，未启用 USE_OCCT 时为桩，仍可编译）
 - 加入 WeldFatigueChecker-Bridging-Header.h（SWIFT_OBJC_BRIDGING_HEADER）
 - Resources/ 作为 folder reference 整目录拷贝（标准包 JSON 借此打进 .ipa）
+- 若存在 WeldFatigueChecker/WeldDefectModel.mlpackage（Core ML 模型包），作为独立编译资源加入，
+  Xcode 会把它编译成 WeldDefectModel.mlmodelc 打进 .app（运行时 compiledModelURL 才能找到）。
+  模型必须放在 WeldFatigueChecker/ 根目录，不要放进 Resources/（Resources 是 folder reference，不编译内部）。
 - Info.plist 通过 INFOPLIST_FILE 引用（GENERATE_INFOPLIST_FILE=NO）
 - OCCT（.step/.iges）默认不链接：应用可无 OCCT 编译；build_occt_ios.sh + build.sh 会在
   Vendor/OCCT 存在时自动开启 USE_OCCT=1 并链接 libOCCT.a。
@@ -37,14 +40,31 @@ for dirpath, _, filenames in os.walk(APP):
 swift_files.sort()
 mm_files.sort()
 
+# Core ML 模型包（.mlpackage / .mlmodel 是目录，os.walk 的 filenames 不含，需按目录名单独收集）：
+# 若存在，作为编译资源加入工程，Xcode 编译成 .mlmodelc 打进 .app（运行时 compiledModelURL 才能找到）；
+# 不存在则跳过（向后兼容：无模型时仍正常编译，运行时自动回退 CV 规则）。
+# ⚠️ 模型必须放在 WeldFatigueChecker/ 根目录（不要放进 Resources/，Resources 是 folder reference 不编译内部）。
+mlmodel_files = []
+for dirpath, dirnames, _ in os.walk(APP):
+    for dn in dirnames:
+        if dn.endswith(".mlpackage") or dn.endswith(".mlmodel"):
+            rel = os.path.relpath(os.path.join(dirpath, dn), APP).replace("\\", "/")
+            mlmodel_files.append(rel)
+mlmodel_files.sort()
+
 bridging_header = "WeldFatigueChecker-Bridging-Header.h"
 
 # file_refs: rel -> (id, lastKnownFileType)
 file_refs = {}
 build_files = {}     # rel -> id (sources)
-for f in swift_files + mm_files:
+for f in swift_files + mm_files + mlmodel_files:
     fr = uid(); bf = uid()
-    isa = "sourcecode.swift" if f.endswith(".swift") else "sourcecode.cpp.objcpp"
+    if f.endswith(".mlpackage") or f.endswith(".mlmodel"):
+        isa = "com.apple.coreml.model"
+    elif f.endswith(".swift"):
+        isa = "sourcecode.swift"
+    else:
+        isa = "sourcecode.cpp.objcpp"
     file_refs[f] = (fr, isa)
     build_files[f] = bf
 
@@ -74,22 +94,26 @@ def file_ref_block(name, fr_id, last_type):
     elif last_type == "c.h":
         return (f"{fr_id} /* {name} */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; "
                 f"path = {name}; sourceTree = \"<group>\"; }};")
+    elif last_type == "mlmodel":
+        return (f"{fr_id} /* {name} */ = {{isa = PBXFileReference; lastKnownFileType = com.apple.coreml.model; "
+                f"path = {name}; sourceTree = \"<group>\"; }};")
     else:
         return (f"{fr_id} /* {name} */ = {{isa = PBXFileReference; lastKnownFileType = {last_type}; "
                 f"path = {name}; sourceTree = \"<group>\"; }};")
 
 # ---- PBXBuildFile (sources) ----
 L("/* Begin PBXBuildFile section */")
-for f in swift_files + mm_files:
+for f in swift_files + mm_files + mlmodel_files:
     bf = build_files[f]; fr = file_refs[f][0]
-    L(f"\t\t{bf} /* {f} in Sources */ = {{isa = PBXBuildFile; fileRef = {fr} /* {f} */; }};")
+    phase = "in Sources" if (f.endswith(".swift") or f.endswith(".mm")) else "in Resources"
+    L(f"\t\t{bf} /* {f} {phase} */ = {{isa = PBXBuildFile; fileRef = {fr} /* {f} */; }};")
 L("\t\t" + bf_res + " /* Resources */ = {isa = PBXBuildFile; fileRef = " + res_fr + " /* Resources */; };")
 L("/* End PBXBuildFile section */")
 L("")
 
 # ---- PBXFileReference ----
 L("/* Begin PBXFileReference section */")
-for f in swift_files + mm_files:
+for f in swift_files + mm_files + mlmodel_files:
     L("\t\t" + file_ref_block(f, file_refs[f][0], file_refs[f][1]))
 L("\t\t" + file_ref_block(bridging_header, bh_fr, "c.h"))
 L("\t\t" + file_ref_block("Resources", res_fr, "folder"))
@@ -108,7 +132,7 @@ L("")
 
 # ---- PBXGroup ----
 L("/* Begin PBXGroup section */")
-all_children = ",\n\t\t\t\t".join(file_refs[f][0] for f in swift_files + mm_files)
+all_children = ",\n\t\t\t\t".join(file_refs[f][0] for f in swift_files + mm_files + mlmodel_files)
 all_children += ",\n\t\t\t\t" + bh_fr + ",\n\t\t\t\t" + res_fr + ",\n\t\t\t\t" + info_fr
 L(f"\t\t{grp_main} = {{isa = PBXGroup; children = (\n\t\t\t\t{grp_wfc},\n\t\t\t\t{grp_products},\n\t\t); "
   f"sourceTree = \"<group>\"; }};")
@@ -149,8 +173,11 @@ L("")
 
 # ---- PBXResourcesBuildPhase ----
 L("/* Begin PBXResourcesBuildPhase section */")
+res_files = bf_res + " /* Resources */"
+if mlmodel_files:
+    res_files += ",\n\t\t\t\t" + ",\n\t\t\t\t".join(build_files[m] + f" /* {m} in Resources */" for m in mlmodel_files)
 L(f"\t\t{phase_resources} /* Resources */ = {{isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; "
-  f"files = (\n\t\t\t\t{bf_res} /* Resources */,\n\t\t); runOnlyForDeploymentPostprocessing = 0; }};")
+  f"files = (\n\t\t\t\t{res_files},\n\t\t); runOnlyForDeploymentPostprocessing = 0; }};")
 L("/* End PBXResourcesBuildPhase section */")
 L("")
 
@@ -167,7 +194,7 @@ L(f"\t\t{cfg_proj_debug} /* Debug */ = {{isa = XCBuildConfiguration; buildSettin
   f"ALWAYS_SEARCH_USER_PATHS = NO; "
   f"CLANG_ANALYZER_NONNULL = YES; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; "
   f"COPY_PHASE_STRIP = NO; ENABLE_STRICT_OBJC_MSGSEND = YES; "
-  f"GCC_DYNAMIC_NO_PIC = NO; GCC_OPTIMIZATION_LEVEL = 0; GCC_PREPROCESSOR_DEFINITIONS = (\n\t\t\t\t\"DEBUG=1\",\n\t\t\t\t\"$(inherited)\",\n\t\t\t); "
+  f"GCC_DYNAMIC_NO_PIC = NO; GCC_OPTIMIZATION_LEVEL = 0; GCC_PREPROCESSOR_DEFINITIONS = (\n\t\t\t\t\"DEBUG=1\",\n\t\t\t\t\"$(inherited)\",\n\t\t); "
   f"IPHONEOS_DEPLOYMENT_TARGET = 18.0; MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE; MTL_FAST_MATH = YES; "
   f"ONLY_ACTIVE_ARCH = YES; SDKROOT = iphoneos; SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG; "
   f"SWIFT_OPTIMIZATION_LEVEL = \"-Onone\"; }}; name = Debug; }};")
@@ -248,7 +275,7 @@ refs = set(re.findall(r"= ([0-9A-F]{24}) ", pbxproj))
 all_def = re.findall(r"^\t\t([0-9A-F]{24}) ", pbxproj, re.M)
 dups = sorted({u for u in all_def if all_def.count(u) > 1})
 missing = refs - defined
-print(f"swift sources: {len(swift_files)}, mm sources: {len(mm_files)}")
+print(f"swift sources: {len(swift_files)}, mm sources: {len(mm_files)}, mlmodel: {len(mlmodel_files)}")
 print(f"written: {out_path}")
 print(f"braces: {{ = {opens}, }} = {closes}  -> {'OK' if opens==closes else 'MISMATCH!'}")
 print(f"defined UUIDs: {len(defined)}, referenced: {len(refs)}, undefined refs: {len(missing)}, duplicate defs: {len(dups)}")
@@ -303,7 +330,7 @@ scheme_xml = f'''<?xml version="1.0" encoding="UTF-8"?>
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       launchStyle = "0"
       useCustomWorkingDirectory = "NO"
-      ignoresPersistentStateOnLaunch = "NO"
+      ignoresPersistentStateOnLaunch = "YES"
       debugDocumentVersioning = "YES"
       debugServiceExtension = "internal"
       allowLocationSimulation = "YES">

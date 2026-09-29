@@ -136,3 +136,110 @@ struct GlowText: View {
             )
     }
 }
+
+// MARK: - 缺陷统一语义色
+// 照片标注与实时扫描共用，避免「照片橙、扫描青」两色混淆。
+// 暖橙与整体青色科技 UI 形成对比，在焊缝照片上更醒目。
+extension Theme {
+    static let defect = Color(red: 1.0, green: 0.55, blue: 0.2)   // #FF8C33 缺陷框/标记
+}
+
+// MARK: - 环形仪表（疲劳利用率 / 合格率等 0..1+ 指标）
+struct GaugeRing: View {
+    let value: Double          // 允许 >1（超差）
+    let label: String
+    var caption: String? = nil
+    var body: some View {
+        let v = min(max(value, 0), 1)
+        let color: Color = value > 1 ? Theme.danger : (value > 0.8 ? Theme.warn : Theme.ok)
+        ZStack {
+            Circle()
+                .stroke(Theme.textSecondary.opacity(0.18), lineWidth: 10)
+            Circle()
+                .trim(from: 0, to: v)
+                .stroke(color, style: StrokeStyle(lineWidth: 10, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .shadow(color: color.opacity(0.5), radius: 6, y: 0)
+            VStack(spacing: 2) {
+                Text(String(format: "%.0f%%", value * 100))
+                    .font(.title.bold()).foregroundStyle(Theme.textPrimary)
+                Text(label).font(.caption2).foregroundStyle(Theme.textSecondary)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label) \(String(format: "%.0f%%", value * 100))" + (value > 1 ? "，超差" : value > 0.8 ? "，接近上限" : "，在安全范围内"))
+    }
+}
+
+// MARK: - 缺陷类型统一标签（与模型 5 类输出对齐）
+// 模型输出：porosity/crack/undercut/overlap/unfused
+enum DefectTypes {
+    static let all: [(tag: String, label: String)] = [
+        ("undercut", "咬边"),
+        ("porosity", "气孔"),
+        ("crack",    "裂纹/弧坑裂纹"),
+        ("overlap",  "焊瘤/满溢"),
+        ("unfused",  "未熔合"),
+    ]
+    static func label(_ tag: String) -> String {
+        all.first(where: { $0.tag == tag })?.label ?? "缺陷"
+    }
+
+    // 类别严重度（越小越严重）：裂纹/弧坑裂纹 > 未熔合 > 咬边 > 焊瘤 > 气孔
+    static func typeRank(_ tag: String) -> Int {
+        switch tag {
+        case "crack":   return 0
+        case "unfused": return 1
+        case "undercut":return 2
+        case "overlap": return 3
+        case "porosity":return 4
+        default:        return 9
+        }
+    }
+    // 验收状态优先级（越小越优先显示）：超差 > 未判定 > 合格
+    static func acceptanceRank(_ accepted: Bool?) -> Int {
+        if accepted == false { return 0 }
+        if accepted == nil   { return 1 }
+        return 2
+    }
+}
+
+// MARK: - 工作流步骤条（引导用户按正确顺序操作）
+struct StepBar: View {
+    let steps: [String]
+    let current: Int   // 当前已到达的步骤索引（0-based）；-1 表示尚未开始
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(steps.enumerated()), id: \.offset) { i, label in
+                VStack(spacing: 3) {
+                    ZStack {
+                        Circle()
+                            .fill(i <= current ? Theme.cyan : Theme.textSecondary.opacity(0.25))
+                            .frame(width: 22, height: 22)
+                        if i < current {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(.black)
+                        } else {
+                            Text("\(i + 1)")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(i == current ? .black : Theme.textSecondary)
+                        }
+                    }
+                    .accessibilityLabel("步骤 \(i + 1)：\(label)" + (i < current ? "（已完成）" : i == current ? "（进行中）" : "（未开始）"))
+                    Text(label)
+                        .font(.system(size: 9))
+                        .foregroundStyle(i <= current ? Theme.textPrimary : Theme.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 56)
+                }
+                if i < steps.count - 1 {
+                    Rectangle()
+                        .fill(i < current ? Theme.cyan : Theme.textSecondary.opacity(0.25))
+                        .frame(height: 2)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+        }
+    }
+}

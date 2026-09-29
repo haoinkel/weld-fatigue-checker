@@ -90,7 +90,46 @@ enum WeldProfileAnalyzer {
                 note: "LiDAR 测得左右板面错位约 \(String(format: "%.1f", mis)) mm"))
         }
 
+        // 4) 焊瘤/满溢（overlap）：余高非对称悬垂——一侧陡降且明显短于另一侧。
+        //    iPad LiDAR ~1mm 点距只能识别「悬垂几何」疑似，最终判定须人工复核。
+        let leftExtent = crest
+        let rightExtent = s.count - crest
+        if excess > excessThresh, leftExtent > 0, rightExtent > 0 {
+            let shorter = min(leftExtent, rightExtent)
+            let longer = max(leftExtent, rightExtent)
+            if Double(shorter) / Double(longer) < 0.45 {
+                cands.append(WeldCandidate(
+                    type: "overlap",
+                    label: "焊瘤/满溢(疑似)",
+                    sizeMm: Double(excess),
+                    confidence: 0.5,
+                    note: "LiDAR 余高非对称悬垂（一侧陡降），疑似焊瘤/满溢，需人工复核"))
+            }
+        }
+
         return cands
+    }
+
+    /// 沿焊缝长度方向多点采样（点云/网格思路）：对每条横截面剖面分别分析，
+    /// 按缺陷类型合并，保留沿缝最大尺寸（局部凹点/悬垂 / 余高突变都可被定位）。
+    /// - Parameter band: 多条横截面深度剖面（mm），如 WeldScanCoordinator.captureProfileBand 产出。
+    static func analyzeBand(_ band: [[Float]]) -> [WeldCandidate] {
+        guard !band.isEmpty else { return [] }
+        var byType: [String: WeldCandidate] = [:]
+        for profile in band {
+            for c in analyze(profile) {
+                if let existing = byType[c.type] {
+                    if c.sizeMm > existing.sizeMm {   // 沿缝取最大值，并放宽置信度下限
+                        byType[c.type] = WeldCandidate(type: c.type, label: c.label,
+                            sizeMm: c.sizeMm, confidence: max(c.confidence, existing.confidence),
+                            note: "沿缝多点采样最大值：\(String(format: "%.1f", c.sizeMm)) mm")
+                    }
+                } else {
+                    byType[c.type] = c
+                }
+            }
+        }
+        return byType.values.sorted { $0.type < $1.type }
     }
 
     // MARK: - 工具

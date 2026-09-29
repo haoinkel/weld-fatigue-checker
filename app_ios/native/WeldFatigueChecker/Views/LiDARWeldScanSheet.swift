@@ -83,6 +83,64 @@ final class WeldScanCoordinator {
         return depthMeters.depthDataMap
     }
 
+    /// 在指定横向位置(归一化 frac 0..1)取一条竖线深度剖面（用于横向焊缝多点采样）
+    static func sampleDepthColumn(_ depth: AVDepthData, atXFraction frac: Double) -> [Float]? {
+        let map = depthMapMeters(depth)
+        let w = CVPixelBufferGetWidth(map), h = CVPixelBufferGetHeight(map)
+        guard CVPixelBufferLockBaseAddress(map, .readOnly) == kCVReturnSuccess else { return nil }
+        defer { CVPixelBufferUnlockBaseAddress(map, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddress(map) else { return nil }
+        let rowBytes = CVPixelBufferGetBytesPerRow(map)
+        let ptr = base.assumingMemoryBound(to: Float32.self)
+        let floatsPerRow = rowBytes / MemoryLayout<Float32>.stride
+        let x = min(max(Int(Double(w) * frac), 0), w - 1)
+        var out: [Float] = []
+        let step = max(1, h / 240)
+        for y in stride(from: 0, to: h, by: step) {
+            let v = ptr[y * floatsPerRow + x]
+            if v.isFinite, v > 0 { out.append(v * 1000.0) }
+        }
+        return out.isEmpty ? nil : out
+    }
+
+    /// 在指定纵向位置(归一化 frac 0..1)取一条横线深度剖面（用于纵向焊缝多点采样）
+    static func sampleDepthRow(_ depth: AVDepthData, atYFraction frac: Double) -> [Float]? {
+        let map = depthMapMeters(depth)
+        let w = CVPixelBufferGetWidth(map), h = CVPixelBufferGetHeight(map)
+        guard CVPixelBufferLockBaseAddress(map, .readOnly) == kCVReturnSuccess else { return nil }
+        defer { CVPixelBufferUnlockBaseAddress(map, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddress(map) else { return nil }
+        let rowBytes = CVPixelBufferGetBytesPerRow(map)
+        let ptr = base.assumingMemoryBound(to: Float32.self)
+        let floatsPerRow = rowBytes / MemoryLayout<Float32>.stride
+        let y = min(max(Int(Double(h) * frac), 0), h - 1)
+        var out: [Float] = []
+        let step = max(1, w / 240)
+        for x in stride(from: 0, to: w, by: step) {
+            let v = ptr[y * floatsPerRow + x]
+            if v.isFinite, v > 0 { out.append(v * 1000.0) }
+        }
+        return out.isEmpty ? nil : out
+    }
+
+    /// 沿焊缝长度方向多点采样（点云/网格思路）：横向焊缝取多条竖线、纵向焊缝取多条横线，
+    /// 返回 count 条横截面深度剖面（mm）。供 WeldProfileAnalyzer.analyzeBand 做沿缝局部缺陷定位。
+    func captureProfileBand(orientation: WeldOrientation, count: Int = 5) -> [[Float]]? {
+        guard let frame = arView?.session.currentFrame,
+              let depth = frame.capturedDepthData else { return nil }
+        let ori: WeldOrientation = (orientation == .auto) ? WeldScanCoordinator.detectOrientation(depth) : orientation
+        var band: [[Float]] = []
+        for i in 0..<count {
+            let frac = count > 1 ? Double(i) / Double(count - 1) : 0.5
+            if ori == .horizontal {
+                if let p = WeldScanCoordinator.sampleDepthColumn(depth, atXFraction: frac) { band.append(p) }
+            } else {
+                if let p = WeldScanCoordinator.sampleDepthRow(depth, atYFraction: frac) { band.append(p) }
+            }
+        }
+        return band.isEmpty ? nil : band
+    }
+
     /// 自动判断焊缝走向：比较中心横行与中心纵列的总变差。
     /// 横截面（垂直于焊缝）方向变差更大。
     /// 纵向列变差大 → 横截面是竖线 → 焊缝横向；横行变差大 → 焊缝纵向。
@@ -248,7 +306,7 @@ struct LiDARWeldScanSheet: View {
         summary = "正在读取 LiDAR 深度剖面…"
         // 深度抓取需在主线程 AR 会话中，UI 反馈稍后给结果
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            guard let profile = WeldScanCoordinator.shared.captureProfile(orientation: orientation) else {
+            guard let band = WeldScanCoordinator.shared.captureProfileBand(orientation: orientation) else {
                 scanning = false
                 summary = "未获取到深度。请正对焊缝、保持 20–60cm，缓慢平移设备几秒后重试。"
                 return
@@ -260,11 +318,27 @@ struct LiDARWeldScanSheet: View {
                 else { return orientation }
                 return WeldScanCoordinator.detectOrientation(depth)
             }()
-            let cands = WeldProfileAnalyzer.analyze(profile)
+            // 沿缝多点采样 → 合并为缺陷候选（含焊瘤/满溢 overlap 与沿缝局部缺陷）
+            let cands = WeldProfileAnalyzer.analyzeBand(band)
             // 自动写入缺陷清单（带实测 mm，用户可逐项复核）
             for c in cands {
                 store.vision.imperfections.append(
                     ImperfectionInput(type: c.type, sizeMm: c.sizeMm, poreMm: nil))
+            }
+            // 自动标定：用 LiDAR 深度 + 相机内参(fx) 反推 像素/mm，使照片 ML 检测结果无需手动标定即得 mm
+            var autoScaledNote = ""
+            if let arView = WeldScanCoordinator.shared.arView,
+               let frame = arView.session.currentFrame {
+                let fx = frame.camera.intrinsics.columns.0.x
+                let scaleProfile = band[band.count / 2]   // 用中心剖面做尺度标定
+                let depths = scaleProfile.filter { $0.isFinite && $0 > 0 }
+                if depths.count > 4, fx > 0 {
+                    let sorted = depths.sorted()
+                    let medianM = Double(sorted[sorted.count / 2]) / 1000.0
+                    let pxPerMm = Double(fx) / medianM
+                    store.applyPhotoScale(pxPerMm)
+                    autoScaledNote = "\n（已用 LiDAR 深度自动标定尺度：1 mm ≈ \(String(format: "%.1f", pxPerMm)) px，照片检测现可直接按 mm 评级）"
+                }
             }
             scanning = false
             recognizedCount = cands.count
@@ -275,6 +349,7 @@ struct LiDARWeldScanSheet: View {
                     cands.map { "· \($0.label)：\(String(format: "%.1f", $0.sizeMm)) mm（置信度 \(Int($0.confidence * 100))%）" }
                         .joined(separator: "\n")
             }
+            summary += autoScaledNote + "\n" + ISO5817Grader.ndtDisclaimer
         }
     }
 }

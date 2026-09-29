@@ -18,18 +18,37 @@ struct ResultView: View {
                 kv("改善措施", "\(imp.0) ×\(imp.1) → FAT \(Int(imp.2))")
             }
             kv("有效 FAT", "\(Int(result.fatigue.effectiveFat))")
+            if !result.fatigue.fatPenalties.isEmpty {
+                kv("缺陷折减", result.fatigue.defectForcedFail ? "强制判废" : "已计入降级")
+                ForEach(result.fatigue.fatPenalties, id: \.self) { n in
+                    Text("· \(n)").font(.caption2).foregroundStyle(Theme.textSecondary)
+                        .padding(.leading, 8)
+                }
+            }
             kv("应力幅 Δσ", "\(Int(result.fatigue.deltaSigma)) MPa (γ_Mf=\(result.fatigue.gammaMf))")
             kv("允许次数", fmt(result.fatigue.nAllowable))
             kv("需求次数", fmt(result.fatigue.nRequired))
-            kv("利用率", String(format: "%.3f （>1 不满足）", result.fatigue.utilization))
-            HStack {
-                Text("疲劳结论").bold().foregroundStyle(Theme.textPrimary)
+
+            // 疲劳利用率环形仪表 + 结论（替代纯文本 KV，一眼看出是否满足）
+            HStack(spacing: 16) {
+                GaugeRing(value: result.fatigue.utilization, label: "疲劳利用率")
+                    .frame(width: 96, height: 96)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("疲劳结论").font(.subheadline.bold()).foregroundStyle(Theme.textSecondary)
+                    Text(result.fatigue.pass ? "满足设计要求 ✓" : (result.fatigue.defectForcedFail ? "缺陷强制判废 ✗" : "不满足 ✗"))
+                        .font(.title3.bold())
+                        .foregroundStyle(result.fatigue.pass ? Theme.ok : Theme.danger)
+                        .shadow(color: (result.fatigue.pass ? Theme.ok : Theme.danger).opacity(0.6), radius: 6, y: 0)
+                    Text("有效 FAT \(Int(result.fatigue.effectiveFat)) · Δσ \(Int(result.fatigue.deltaSigma)) MPa")
+                        .font(.caption).foregroundStyle(Theme.textSecondary)
+                    if result.fatigue.defectForcedFail {
+                        Text("裂纹/未熔合/未焊透等一票否决缺陷：疲劳不满足")
+                            .font(.caption2).foregroundStyle(Theme.danger)
+                    }
+                }
                 Spacer()
-                Text(result.fatigue.pass ? "满足 ✓" : "不满足 ✗")
-                    .bold()
-                    .foregroundStyle(result.fatigue.pass ? Theme.ok : Theme.danger)
-                    .shadow(color: (result.fatigue.pass ? Theme.ok : Theme.danger).opacity(0.6), radius: 6, y: 0)
             }
+            .techCard(glow: true)
 
             if !result.design.warnings.isEmpty {
                 Text("① 识别出的不合理/疲劳不利细部").font(.subheadline.bold())
@@ -47,8 +66,23 @@ struct ResultView: View {
 
             Text("② 表面缺陷（ISO 5817）").font(.subheadline.bold())
             ForEach(result.imperfections, id: \.label) { r in
-                kv(r.label + (r.fatigueRelevant ? " [疲劳相关]" : ""),
-                   "\(r.accepted == true ? "通过" : (r.accepted == false ? "超差" : "未判定")) | \(r.limit)")
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(r.accepted == true ? Theme.ok : (r.accepted == false ? Theme.danger : Theme.warn))
+                        .frame(width: 8, height: 8)
+                    Text(r.label + (r.fatigueRelevant ? " [疲劳相关]" : ""))
+                        .font(.subheadline).foregroundStyle(Theme.textPrimary)
+                    Spacer()
+                    Text(r.accepted == true ? "通过" : (r.accepted == false ? "超差" : "未判定"))
+                        .font(.caption.bold())
+                        .foregroundStyle(r.accepted == true ? Theme.ok : (r.accepted == false ? Theme.danger : Theme.warn))
+                    Text("| \(r.limit)")
+                        .font(.caption2).foregroundStyle(Theme.textSecondary)
+                }
+                .padding(8)
+                .background(Theme.panelGradient, in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8)
+                    .stroke((r.accepted == false ? Theme.danger : Theme.cyan).opacity(0.2), lineWidth: 1))
             }
 
             Text("③ 改善建议（按优先级）").font(.subheadline.bold())

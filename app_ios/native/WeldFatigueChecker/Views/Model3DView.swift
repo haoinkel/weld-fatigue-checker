@@ -17,6 +17,7 @@ struct Model3DView: View {
     @State private var overlayOpacity: Double = 0.5
     @State private var sideBySide = false
     @State private var loadedName: String = ""
+    @State private var occtFeatures: (thick: Double, len: Double, minEdge: Double, jointHint: String)? = nil
 
     var body: some View {
         NavigationView {
@@ -115,10 +116,11 @@ struct Model3DView: View {
         DispatchQueue.global(qos: .userInitiated).async {
             var node: SCNNode?
             var errMsg: String?
-            if ext == "step" || ext == "stp" {
-                node = loadSTEP(url, &errMsg)
-            } else if ext == "iges" || ext == "igs" {
-                node = loadIGES(url, &errMsg)
+            var feat: (thick: Double, len: Double, minEdge: Double, jointHint: String)? = nil
+            if ext == "step" || ext == "stp" || ext == "iges" || ext == "igs" {
+                node = (ext == "step" || ext == "stp") ? loadSTEP(url, &errMsg) : loadIGES(url, &errMsg)
+                // OCCT 几何特征提取（STEP/IGES）：板厚/长度/最短边(过渡半径候选)/拓扑提示
+                if let f = self.extractFeatures(url) { feat = f }
             } else {
                 node = loadViaModelIO(url, &errMsg)
             }
@@ -131,13 +133,33 @@ struct Model3DView: View {
                 if let n = node {
                     self.modelNode = n
                     self.bbox = sizes
+                    self.occtFeatures = feat
                     self.loadedName = displayName
-                    self.status = "已加载 \(displayName) ｜ 包围盒(假设 mm) X≈\(Int(sizes.0)) Y≈\(Int(sizes.1)) Z≈\(Int(sizes.2))"
+                    if let f = feat {
+                        self.status = "已加载 \(displayName) ｜ OCCT 解析：板厚≈\(Int(f.thick))mm，长度≈\(Int(f.len))mm，最短边≈\(String(format:"%.2f", f.minEdge))mm（jointHint=\(f.jointHint)）"
+                    } else {
+                        self.status = "已加载 \(displayName) ｜ 包围盒(假设 mm) X≈\(Int(sizes.0)) Y≈\(Int(sizes.1)) Z≈\(Int(sizes.2))"
+                    }
                 } else {
                     self.status = errMsg ?? "加载失败"
                 }
             }
         }
+    }
+
+    // OCCT 几何特征提取（仅 STEP/IGES，需 USE_OCCT 编译）。返回 nil 表示未启用或失败。
+    private func extractFeatures(_ url: URL) -> (thick: Double, len: Double, minEdge: Double, jointHint: String)? {
+        var feat = OCCTFeatures()
+        var ok = false
+        url.withUnsafeFileSystemRepresentation { ptr in
+            guard let ptr else { return }
+            ok = occt_extract_features(ptr, &feat) != 0
+        }
+        guard ok else { return nil }
+        let dims = [Double(feat.bboxX), Double(feat.bboxY), Double(feat.bboxZ)].sorted()
+        let hint = feat.solidCount <= 1 ? "single_solid" : "assembly_\(feat.solidCount)"
+        return (thick: max(dims[0], 1), len: max(dims[2], 1),
+                minEdge: Double(feat.minEdgeLen), jointHint: hint)
     }
 
     // MARK: - STEP / IGES（经 OCCT 桥接）
@@ -290,8 +312,17 @@ struct Model3DView: View {
         return m
     }
 
-    // 把包围盒三边长（按 mm 假设）填入设计表单：最短边≈板厚，最长边≈长度
+    // 把几何特征填入设计表单：优先用 OCCT 解析（板厚/长度/最短边过渡半径候选），
+    // 退回用包围盒（最短边≈板厚，最长边≈长度）。
     private func fillDesign() {
+        if let f = occtFeatures {
+            store.design.plateThicknessMm = f.thick
+            store.design.attachmentLengthMm = f.len
+            if f.minEdge > 0 { store.design.transitionRadiusMm = f.minEdge }   // 候选，待人工复核
+            status = "已通过 OCCT 解析填入：板厚≈\(Int(f.thick))mm，长度≈\(Int(f.len))mm，" +
+                "最短边(过渡半径候选)≈\(String(format:"%.2f", f.minEdge))mm（jointHint=\(f.jointHint)；过渡半径/接头类型请人工复核）。"
+            return
+        }
         let dims = [bbox.x, bbox.y, bbox.z].sorted()
         let thick = Double(dims[0]); let len = Double(dims[2])
         store.design.plateThicknessMm = max(thick, 1)

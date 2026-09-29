@@ -31,7 +31,8 @@
 		00000000000000000010002E /* WeldFatigueCheckerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000010002D /* WeldFatigueCheckerApp.swift */; };
 		000000000000000000100030 /* WeldProfileAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000010002F /* WeldProfileAnalyzer.swift */; };
 		000000000000000000100032 /* Model3D/occt_bridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000100031 /* Model3D/occt_bridge.mm */; };
-		000000000000000000100035 /* Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000100034 /* Resources */; };
+		000000000000000000100034 /* WeldDefectModel.mlpackage in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000100033 /* WeldDefectModel.mlpackage */; };
+		000000000000000000100037 /* Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000100036 /* Resources */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -60,23 +61,24 @@
 		00000000000000000010002D /* WeldFatigueCheckerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeldFatigueCheckerApp.swift; sourceTree = "<group>"; };
 		00000000000000000010002F /* WeldProfileAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeldProfileAnalyzer.swift; sourceTree = "<group>"; };
 		000000000000000000100031 /* Model3D/occt_bridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = Model3D/occt_bridge.mm; sourceTree = "<group>"; };
-		000000000000000000100033 /* WeldFatigueChecker-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = WeldFatigueChecker-Bridging-Header.h; sourceTree = "<group>"; };
-		000000000000000000100034 /* Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Resources; path = Resources; sourceTree = "<group>"; };
-		000000000000000000100036 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		000000000000000000100037 /* WeldFatigueChecker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; path = WeldFatigueChecker.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		000000000000000000100033 /* WeldDefectModel.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = com.apple.coreml.model; path = WeldDefectModel.mlpackage; sourceTree = "<group>"; };
+		000000000000000000100035 /* WeldFatigueChecker-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = WeldFatigueChecker-Bridging-Header.h; sourceTree = "<group>"; };
+		000000000000000000100036 /* Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Resources; path = Resources; sourceTree = "<group>"; };
+		000000000000000000100038 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		000000000000000000100039 /* WeldFatigueChecker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; path = WeldFatigueChecker.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		00000000000000000010003D /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (
+		00000000000000000010003F /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (
 		); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		00000000000000000010003A = {isa = PBXGroup; children = (
-				000000000000000000100038,
-				000000000000000000100039,
+		00000000000000000010003C = {isa = PBXGroup; children = (
+				00000000000000000010003A,
+				00000000000000000010003B,
 		); sourceTree = "<group>"; };
-		000000000000000000100038 /* WeldFatigueChecker */ = {isa = PBXGroup; children = (
+		00000000000000000010003A /* WeldFatigueChecker */ = {isa = PBXGroup; children = (
 				000000000000000000100001,
 				000000000000000000100003,
 				000000000000000000100005,
@@ -103,41 +105,43 @@
 				00000000000000000010002F,
 				000000000000000000100031,
 				000000000000000000100033,
-				000000000000000000100034,
-				000000000000000000100036
+				000000000000000000100035,
+				000000000000000000100036,
+				000000000000000000100038
 		); path = WeldFatigueChecker; sourceTree = "<group>"; };
-		000000000000000000100039 /* Products */ = {isa = PBXGroup; children = (
-				000000000000000000100037,
+		00000000000000000010003B /* Products */ = {isa = PBXGroup; children = (
+				000000000000000000100039,
 		); name = Products; sourceTree = "<group>"; };
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		000000000000000000100044 /* WeldFatigueChecker */ = {isa = PBXNativeTarget; buildConfigurationList = 00000000000000000010003F /* Build configuration list for PBXNativeTarget "WeldFatigueChecker" */; buildPhases = (
-				00000000000000000010003B /* Sources */,
-				00000000000000000010003D /* Frameworks */,
-				00000000000000000010003C /* Resources */,
+		000000000000000000100046 /* WeldFatigueChecker */ = {isa = PBXNativeTarget; buildConfigurationList = 000000000000000000100041 /* Build configuration list for PBXNativeTarget "WeldFatigueChecker" */; buildPhases = (
+				00000000000000000010003D /* Sources */,
+				00000000000000000010003F /* Frameworks */,
+				00000000000000000010003E /* Resources */,
 		); buildRules = (
 		); dependencies = (
-		); name = WeldFatigueChecker; productName = WeldFatigueChecker; productReference = 000000000000000000100037 /* WeldFatigueChecker.app */; productType = "com.apple.product-type.application"; };
+		); name = WeldFatigueChecker; productName = WeldFatigueChecker; productReference = 000000000000000000100039 /* WeldFatigueChecker.app */; productType = "com.apple.product-type.application"; };
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		000000000000000000100045 /* Project object */ = {isa = PBXProject; attributes = {BuildIndependentTargetsInParallel = 1; LastSwiftUpdateCheck = 1600; LastUpgradeCheck = 1600; TargetAttributes = { 000000000000000000100044 = { CreatedOnToolsVersion = 16.0; DevelopmentTeam = ""; ProvisioningStyle = Automatic; }; }; }; buildConfigurationList = 00000000000000000010003E /* Build configuration list for PBXProject "WeldFatigueChecker" */; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (
+		000000000000000000100047 /* Project object */ = {isa = PBXProject; attributes = {BuildIndependentTargetsInParallel = 1; LastSwiftUpdateCheck = 1600; LastUpgradeCheck = 1600; TargetAttributes = { 000000000000000000100046 = { CreatedOnToolsVersion = 16.0; DevelopmentTeam = ""; ProvisioningStyle = Automatic; }; }; }; buildConfigurationList = 000000000000000000100040 /* Build configuration list for PBXProject "WeldFatigueChecker" */; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (
 				en,
 				"zh-Hans",
-			); mainGroup = 00000000000000000010003A; productRefGroup = 000000000000000000100039 /* Products */; projectDirPath = ""; projectRoot = ""; targets = (
-				000000000000000000100044 /* WeldFatigueChecker */,
+			); mainGroup = 00000000000000000010003C; productRefGroup = 00000000000000000010003B /* Products */; projectDirPath = ""; projectRoot = ""; targets = (
+				000000000000000000100046 /* WeldFatigueChecker */,
 		); };
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		00000000000000000010003C /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (
-				000000000000000000100035 /* Resources */,
+		00000000000000000010003E /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (
+				000000000000000000100037 /* Resources */,
+				000000000000000000100034 /* WeldDefectModel.mlpackage in Resources */,
 		); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		00000000000000000010003B /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (
+		00000000000000000010003D /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (
 				000000000000000000100002,
 				000000000000000000100004,
 				000000000000000000100006,
@@ -167,31 +171,31 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		000000000000000000100040 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = { ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ANALYZER_NONNULL = YES; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; COPY_PHASE_STRIP = NO; ENABLE_STRICT_OBJC_MSGSEND = YES; GCC_DYNAMIC_NO_PIC = NO; GCC_OPTIMIZATION_LEVEL = 0; GCC_PREPROCESSOR_DEFINITIONS = (
+		000000000000000000100042 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = { ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ANALYZER_NONNULL = YES; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; COPY_PHASE_STRIP = NO; ENABLE_STRICT_OBJC_MSGSEND = YES; GCC_DYNAMIC_NO_PIC = NO; GCC_OPTIMIZATION_LEVEL = 0; GCC_PREPROCESSOR_DEFINITIONS = (
 				"DEBUG=1",
 				"$(inherited)",
-			); IPHONEOS_DEPLOYMENT_TARGET = 18.0; MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE; MTL_FAST_MATH = YES; ONLY_ACTIVE_ARCH = YES; SDKROOT = iphoneos; SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; }; name = Debug; };
-		000000000000000000100041 /* Release */ = {isa = XCBuildConfiguration; buildSettings = { ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ANALYZER_NONNULL = YES; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; COPY_PHASE_STRIP = NO; ENABLE_NS_ASSERTIONS = NO; GCC_OPTIMIZATION_LEVEL = s; IPHONEOS_DEPLOYMENT_TARGET = 18.0; MTL_ENABLE_DEBUG_INFO = NO; MTL_FAST_MATH = YES; SDKROOT = iphoneos; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_OPTIMIZATION_LEVEL = "-O"; VALIDATE_PRODUCT = YES; }; name = Release; };
+		); IPHONEOS_DEPLOYMENT_TARGET = 18.0; MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE; MTL_FAST_MATH = YES; ONLY_ACTIVE_ARCH = YES; SDKROOT = iphoneos; SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; }; name = Debug; };
+		000000000000000000100043 /* Release */ = {isa = XCBuildConfiguration; buildSettings = { ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ANALYZER_NONNULL = YES; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; COPY_PHASE_STRIP = NO; ENABLE_NS_ASSERTIONS = NO; GCC_OPTIMIZATION_LEVEL = s; IPHONEOS_DEPLOYMENT_TARGET = 18.0; MTL_ENABLE_DEBUG_INFO = NO; MTL_FAST_MATH = YES; SDKROOT = iphoneos; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_OPTIMIZATION_LEVEL = "-O"; VALIDATE_PRODUCT = YES; }; name = Release; };
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		00000000000000000010003E /* Build configuration list for PBXProject "WeldFatigueChecker" */ = {isa = XCConfigurationList; buildConfigurations = (
-				000000000000000000100040 /* Debug */,
-				000000000000000000100041 /* Release */,
-		); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
-		00000000000000000010003F /* Build configuration list for PBXNativeTarget "WeldFatigueChecker" */ = {isa = XCConfigurationList; buildConfigurations = (
+		000000000000000000100040 /* Build configuration list for PBXProject "WeldFatigueChecker" */ = {isa = XCConfigurationList; buildConfigurations = (
 				000000000000000000100042 /* Debug */,
 				000000000000000000100043 /* Release */,
 		); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
-		000000000000000000100042 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = { ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; DEVELOPMENT_TEAM = ""; ENABLE_BITCODE = NO; INSTALL_PATH = /Applications; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = WeldFatigueChecker/Info.plist; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; IPHONEOS_DEPLOYMENT_TARGET = 18.0; LD_RUNPATH_SEARCH_PATHS = (
+		000000000000000000100041 /* Build configuration list for PBXNativeTarget "WeldFatigueChecker" */ = {isa = XCConfigurationList; buildConfigurations = (
+				000000000000000000100044 /* Debug */,
+				000000000000000000100045 /* Release */,
+		); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		000000000000000000100044 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = { ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; DEVELOPMENT_TEAM = ""; ENABLE_BITCODE = NO; INSTALL_PATH = /Applications; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = WeldFatigueChecker/Info.plist; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; IPHONEOS_DEPLOYMENT_TARGET = 18.0; LD_RUNPATH_SEARCH_PATHS = (
 				"$(inherited)",
 				"@executable_path/Frameworks",
 			); MARKETING_VERSION = 1.0; PRODUCT_BUNDLE_IDENTIFIER = com.yourorg.weldfatiguechecker; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_OBJC_BRIDGING_HEADER = WeldFatigueChecker/WeldFatigueChecker-Bridging-Header.h; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2";  SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG; ONLY_ACTIVE_ARCH = YES; }; name = Debug; };
-		000000000000000000100043 /* Release */ = {isa = XCBuildConfiguration; buildSettings = { ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; DEVELOPMENT_TEAM = ""; ENABLE_BITCODE = NO; INSTALL_PATH = /Applications; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = WeldFatigueChecker/Info.plist; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; IPHONEOS_DEPLOYMENT_TARGET = 18.0; LD_RUNPATH_SEARCH_PATHS = (
+		000000000000000000100045 /* Release */ = {isa = XCBuildConfiguration; buildSettings = { ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; DEVELOPMENT_TEAM = ""; ENABLE_BITCODE = NO; INSTALL_PATH = /Applications; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = WeldFatigueChecker/Info.plist; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; IPHONEOS_DEPLOYMENT_TARGET = 18.0; LD_RUNPATH_SEARCH_PATHS = (
 				"$(inherited)",
 				"@executable_path/Frameworks",
 			); MARKETING_VERSION = 1.0; PRODUCT_BUNDLE_IDENTIFIER = com.yourorg.weldfatiguechecker; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_OBJC_BRIDGING_HEADER = WeldFatigueChecker/WeldFatigueChecker-Bridging-Header.h; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2";  SWIFT_OPTIMIZATION_LEVEL = "-O"; }; name = Release; };
 /* End XCConfigurationList section */
 	};
-	rootObject = 000000000000000000100045 /* Project object */;
+	rootObject = 000000000000000000100047 /* Project object */;
 }
