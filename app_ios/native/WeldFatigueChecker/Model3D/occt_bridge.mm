@@ -57,6 +57,9 @@ const char* occt_last_error(void) { return g_occt_err; }
 #include <TopoDS_Solid.hxx>
 #include <TopoDS_Edge.hxx>
 #include <gp_Dir.hxx>      // gp_Dir（面法线，M1 几何原语提取）
+#include <gp_Vec.hxx>      // gp_Vec（BRepGProp_Face::Normal 输出）
+#include <BRepGProp_Face.hxx>  // BRepGProp_Face（取面几何法线，GProp_GProps 无 Normal）
+#include <BRepTools.hxx>   // BRepTools::UVBounds（取面参数域边界）
 #include <algorithm>       // std::sort（板面组排序）
 #endif
 
@@ -195,11 +198,16 @@ namespace {
         for (TopExp_Explorer ex(shape, TopAbs_FACE); ex.More(); ex.Next()) {
             const TopoDS_Face& face = TopoDS::Face(ex.Current());
             if (face.IsNull()) continue;
-            GProp_GProps sp;
-            BRepGProp::SurfaceProperties(face, sp);
-            if (!sp.IsDone()) continue;
-            gp_Dir n = sp.Normal();
-            double m = std::sqrt(n.X()*n.X() + n.Y()*n.Y() + n.Z()*n.Z());
+            // GProp_GProps 仅含面积/质心/惯量矩，无 Normal()/IsDone()；
+            // 改用 BRepGProp_Face 在面参数域中心取精确几何法线。
+            BRepGProp_Face gf(face);
+            Standard_Real u1 = 0, u2 = 0, v1 = 0, v2 = 0;
+            BRepTools::UVBounds(face, u1, u2, v1, v2);
+            gp_Pnt P;
+            gp_Vec N;
+            if (!gf.Normal((u1 + u2) * 0.5, (v1 + v2) * 0.5, P, N)) continue;
+            gp_Dir n(N);
+            double m = n.Magnitude();
             if (m < 1e-6) continue;
             faceNormals.push_back(n);
         }
