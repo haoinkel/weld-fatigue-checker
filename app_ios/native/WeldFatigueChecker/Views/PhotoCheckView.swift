@@ -379,7 +379,7 @@ struct PhotoCheckView: View {
                                 .accessibilityLabel("重新自动识别")
                             }
                             if let ppm = store.photoPxPerMm {
-                                Text("已标定：1 mm ≈ \(ppm, specifier: "%.2f") px（自动框尺寸按 mm 显示）")
+                                Text("已标定：1 mm ≈ \(String(format: "%.2f", Double(ppm))) px（自动框尺寸按 mm 显示）")
                                     .font(.caption2).foregroundStyle(Theme.cyan)
                             } else {
                                 Text("未标定：自动框尺寸暂以像素显示。点「📏 标定比例」在参照物上点两点并输入真实长度。")

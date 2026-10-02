@@ -91,7 +91,7 @@ struct MLDefectDetector {
     static var lastRawScoresText: String {
         let s = lastRawScores.prefix(3)
         guard !s.isEmpty else { return "无任何候选（模型输出全为背景）" }
-        return s.map { "\($0.cls) \($0.score, specifier: "%.2f")" }.joined(separator: " / ")
+        return s.map { "\($0.cls) \(String(format: "%.2f", $0.score))" }.joined(separator: " / ")
     }
 
     /// 模型文件名（不含扩展名）。编译后为 .mlmodelc，开发期直接拖入为 .mlpackage。
@@ -201,7 +201,7 @@ struct MLDefectDetector {
         // 分数普遍 <0.25 → 模型输出 0 框 → App 端"永远检不出"。压到 0.05 让候选尽量浮出，
         // 真正的分级过滤交给 App 端 threshold(for:)（灵敏度可调）。
         // 若参数键不被该模型支持（MLModel 加载抛错），回退不覆盖加载（默认 0.25 行为不变）。
-        cfg.parameters = [MLParameterKey.confidenceThreshold: 0.05]
+        cfg.parameters = [MLParameterKey("confidenceThreshold"): 0.05]
         _nmsThresholdOverridden = true
         let model: MLModel
         do {
