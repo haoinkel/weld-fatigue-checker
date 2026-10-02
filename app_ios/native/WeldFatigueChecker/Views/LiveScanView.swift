@@ -59,6 +59,10 @@ struct LiveScanView: View {
                 let (iwP, ihP, offX, offY) = Self.aspectFill(imageAspect: a, viewW: vw, viewH: vh)
 
                 ZStack {
+                    // 关键修复：恒存在的透明占位层。若没有它，当无 roi/无拖拽/无缺陷时
+                    // ZStack 尺寸为 0 → contentShape 命中区域为空 → 框选拖拽永远无法触发。
+                    Color.clear
+
                     // 已提交的焊缝区域（虚线黄）：区域外不检测
                     if let r = scanner.roi {
                         let rs = Self.screenOf(r, offX: offX, offY: offY, iwP: iwP, ihP: ihP)
@@ -140,9 +144,14 @@ struct LiveScanView: View {
             VStack {
                 HStack {
                     Button(action: { dismiss() }) {
-                        Image(systemName: "xmark.circle.fill").font(.title2)
-                            .foregroundStyle(.white, .black.opacity(0.6))
+                        Label("退出", systemImage: "xmark.circle.fill")
+                            .font(.subheadline.bold())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 10).padding(.vertical, 7)
+                            .background(.black.opacity(0.55), in: Capsule())
+                            .overlay(Capsule().stroke(Color.white.opacity(0.85), lineWidth: 1))
                     }
+                    .accessibilityLabel("退出实时扫描")
                     Spacer()
                     VStack(spacing: 2) {
                         Text("🎥 实时焊缝缺陷扫描")
