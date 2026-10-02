@@ -144,6 +144,22 @@ final class RealtimeDefectScanner: NSObject, ObservableObject,
         guard let pb = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         guard let (ui, size) = Self.uiImage(from: pb) else { return }
 
+        // 先保存最新帧与 FPS 统计（与 ROI 无关）：
+        // 修复——原实现把 lastCapturedImage 更新放在 ROI 闸门之后，未框选焊缝时帧被
+        // 直接丢弃，点「捕获快照」永远报"尚未取到帧"。ROI 只应闸检测，不应闸取帧。
+        DispatchQueue.main.async {
+            self.frameSize = size
+            self.lastCapturedImage = ui
+            // FPS 统计
+            self.fpsCount += 1
+            let el = now - self.fpsStart
+            if el >= 1.0 {
+                self.fps = Int(Double(self.fpsCount) / el)
+                self.fpsCount = 0
+                self.fpsStart = now
+            }
+        }
+
         // 焊缝区域闸门：未框选焊缝时不检测，避免非焊缝物体（高光/纹理）被误判为余高等缺陷
         guard let roi = roi else {
             DispatchQueue.main.async {
@@ -157,16 +173,6 @@ final class RealtimeDefectScanner: NSObject, ObservableObject,
 
         DispatchQueue.main.async {
             self.detections = dets
-            self.frameSize = size
-            self.lastCapturedImage = ui
-            // FPS 统计
-            self.fpsCount += 1
-            let el = now - self.fpsStart
-            if el >= 1.0 {
-                self.fps = Int(Double(self.fpsCount) / el)
-                self.fpsCount = 0
-                self.fpsStart = now
-            }
         }
     }
 
