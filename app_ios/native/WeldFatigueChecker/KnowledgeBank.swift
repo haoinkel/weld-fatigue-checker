@@ -9,7 +9,13 @@
 
 import Foundation
 
-struct DetailCategory { let id: String; let fat: Int; let name: String }
+struct DetailCategory {
+    let id: String; let fat: Int; let name: String
+    var table: String?   // EN1993-1-9 表号（"8.1"…"8.5" / "8.4/8.5"），评估结果展示用
+    init(id: String, fat: Int, name: String, table: String? = nil) {
+        self.id = id; self.fat = fat; self.name = name; self.table = table
+    }
+}
 struct ImprovementMethod { let method: String; let label: String; let factor: Double; let maxFat: Int }
 
 struct IsoLimit {

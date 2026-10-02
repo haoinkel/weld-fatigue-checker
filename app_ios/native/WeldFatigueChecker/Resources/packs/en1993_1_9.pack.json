@@ -36,217 +36,248 @@
       "fat": 160,
       "name": "轧制/模压产品（元件1-3）",
       "verified": true,
-      "note": "最高疲劳等级，需磨削消去锐边。"
+      "note": "最高疲劳等级，需磨削消去锐边。",
+      "table": "8.1"
     },
     {
       "id": "P4",
       "fat": 125,
       "name": "机器气割并修整的板材（元件4,5）",
       "verified": true,
-      "note": "切割面机加工/磨削消去粗糙点。"
+      "note": "切割面机加工/磨削消去粗糙点。",
+      "table": "8.1"
     },
     {
       "id": "P6",
       "fat": 100,
       "name": "轧制/压延产品（元件6,7）",
       "verified": true,
-      "note": ""
+      "note": "",
+      "table": "8.1"
     },
     {
       "id": "B8",
       "fat": 112,
       "name": "预载高强度螺栓双面对称接头-毛截面（元件8）",
       "verified": true,
-      "note": ""
+      "note": "",
+      "table": "8.1"
     },
     {
       "id": "B10",
       "fat": 90,
       "name": "预载注脂螺栓单面接头-毛截面（元件10）",
       "verified": true,
-      "note": ""
+      "note": "",
+      "table": "8.1"
     },
     {
       "id": "B12",
       "fat": 80,
       "name": "装配螺栓单面接头-净截面（元件12）",
       "verified": true,
-      "note": ""
+      "note": "",
+      "table": "8.1"
     },
     {
       "id": "B13",
       "fat": 50,
       "name": "非预载螺栓单/双面对称接头-净截面（元件13）",
       "verified": true,
-      "note": ""
+      "note": "",
+      "table": "8.1"
     },
     {
       "id": "WS1",
       "fat": 125,
       "name": "双面自动对接/角焊缝，连续纵焊缝（元件1,2）",
       "verified": true,
-      "note": "盖板端部须按表8.5 元件6/7 检查。"
+      "note": "盖板端部须按表8.5 元件6/7 检查。",
+      "table": "8.2"
     },
     {
       "id": "WS3",
       "fat": 112,
       "name": "双面自动角焊/对焊含起止点（元件3,4）",
       "verified": true,
-      "note": "有起止点则降级：元件4 用 100 类。"
+      "note": "有起止点则降级：元件4 用 100 类。",
+      "table": "8.2"
     },
     {
       "id": "WS5",
       "fat": 100,
       "name": "手工角焊/对焊（元件5,6）",
       "verified": true,
-      "note": ""
+      "note": "",
+      "table": "8.2"
     },
     {
       "id": "WS8",
       "fat": 80,
       "name": "间断纵向角焊缝 g/h≤25（元件8）",
       "verified": true,
-      "note": ""
+      "note": "",
+      "table": "8.2"
     },
     {
       "id": "WS9",
       "fat": 71,
       "name": "处理孔纵向对接焊缝（高度≤60mm，元件9）",
       "verified": true,
-      "note": "基于翼缘法向应力 Δσc=71。"
+      "note": "基于翼缘法向应力 Δσc=71。",
+      "table": "8.2"
     },
     {
       "id": "WS10g",
       "fat": 125,
       "name": "纵向对接焊缝两面打磨与加载方向齐平+100%探伤（元件10）",
       "verified": true,
-      "note": ""
+      "note": "",
+      "table": "8.2"
     },
     {
       "id": "WS10n",
       "fat": 112,
       "name": "纵向对接焊缝无磨削无起止点（元件10）",
       "verified": true,
-      "note": ""
+      "note": "",
+      "table": "8.2"
     },
     {
       "id": "WS10s",
       "fat": 100,
       "name": "纵向对接焊缝有起止点（元件10）",
       "verified": true,
-      "note": ""
+      "note": "",
+      "table": "8.2"
     },
     {
       "id": "WS11a",
       "fat": 140,
       "name": "空心型材无起止点自动纵缝焊 t≤12.5mm（元件11）",
       "verified": true,
-      "note": ""
+      "note": "",
+      "table": "8.2"
     },
     {
       "id": "WS11b",
       "fat": 125,
       "name": "空心型材无起止点自动纵缝焊 t≥12.5mm（元件11）",
       "verified": true,
-      "note": ""
+      "note": "",
+      "table": "8.2"
     },
     {
       "id": "W_TA_TRANS_71",
       "fat": 71,
       "name": "横向非承载角焊缝附件（L≤100mm，焊态）",
       "verified": true,
-      "note": "Transverse fillet-welded attachment, L≤100mm；附件越长等级越低。焊趾打磨可提至 80。"
+      "note": "Transverse fillet-welded attachment, L≤100mm；附件越长等级越低。焊趾打磨可提至 80。",
+      "table": "8.4"
     },
     {
       "id": "W_TA_TRANS_GROUND_80",
       "fat": 80,
       "name": "横向附件（焊缝端部仔细打磨消去咬边）",
       "verified": true,
-      "note": "Transverse attachment, 焊缝端部打磨移除横向焊趾，FAT 80（表8.4 detail4）。"
+      "note": "Transverse attachment, 焊缝端部打磨移除横向焊趾，FAT 80（表8.4 detail4）。",
+      "table": "8.4"
     },
     {
       "id": "W_LA_LONG_90",
       "fat": 90,
       "name": "纵向附件（光滑过渡半径 r/L≥1/3 或 r>150mm）",
       "verified": true,
-      "note": "Longitudinal attachment with smooth transition radius; r/L≥1/3 → 90（表8.4 detail1, AC:2009）。"
+      "note": "Longitudinal attachment with smooth transition radius; r/L≥1/3 → 90（表8.4 detail1, AC:2009）。",
+      "table": "8.4"
     },
     {
       "id": "W_LA_LONG_71",
       "fat": 71,
       "name": "纵向附件（1/6≤r/L≤1/3）",
       "verified": true,
-      "note": "1/6≤r/L≤1/3 → 71（表8.4 detail2）。"
+      "note": "1/6≤r/L≤1/3 → 71（表8.4 detail2）。",
+      "table": "8.4"
     },
     {
       "id": "W_LA_LONG_50",
       "fat": 50,
       "name": "纵向附件（焊态，无过渡半径）",
       "verified": true,
-      "note": "As-welded, no radius transition → 50（表8.4 detail3）。"
+      "note": "As-welded, no radius transition → 50（表8.4 detail3）。",
+      "table": "8.4"
     },
     {
       "id": "W_STIFF_WEB_71",
       "fat": 71,
       "name": "竖向/横向加劲肋焊于腹板或翼缘（焊态）",
       "verified": true,
-      "note": "Vertical stiffener welded to girder web/flange（表8.4 detail7/8）；受拉翼缘见 W_STIFF_FLANGE_50。"
+      "note": "Vertical stiffener welded to girder web/flange（表8.4 detail7/8）；受拉翼缘见 W_STIFF_FLANGE_50。",
+      "table": "8.4"
     },
     {
       "id": "W_STIFF_FLANGE_50",
       "fat": 50,
       "name": "横向加劲肋焊于受拉翼缘（焊态）",
       "verified": true,
-      "note": "Transverse stiffener welded to tension flange；bearing stiffener 同属此类（表8.4/8.5）。"
+      "note": "Transverse stiffener welded to tension flange；bearing stiffener 同属此类（表8.4/8.5）。",
+      "table": "8.4/8.5"
     },
     {
       "id": "W_COVER_END_80",
       "fat": 80,
       "name": "盖板/补强板端部（横向，焊缝端部打磨）",
       "verified": true,
-      "note": "Cover plate end, transverse, weld ends ground → 80（表8.4 detail6）；部分文献取 71/63，以原文校核。"
+      "note": "Cover plate end, transverse, weld ends ground → 80（表8.4 detail6）；部分文献取 71/63，以原文校核。",
+      "table": "8.4"
     },
     {
       "id": "W_CRUCIFORM_TOE_80",
       "fat": 80,
       "name": "传力十字/T型接头（全熔透/部分熔透），焊趾失效",
       "verified": true,
-      "note": "Load-carrying cruciform/Tee, toe failure in load-carrying plate（表8.5 detail1/3）；须同时按 W_CRUCIFORM_ROOT_36 评估根部。"
+      "note": "Load-carrying cruciform/Tee, toe failure in load-carrying plate（表8.5 detail1/3）；须同时按 W_CRUCIFORM_ROOT_36 评估根部。",
+      "table": "8.5"
     },
     {
       "id": "W_CRUCIFORM_ROOT_36",
       "fat": 36,
       "name": "传力十字/T型接头（部分熔透/角焊），根部失效",
       "verified": true,
-      "note": "Root failure (partial penetration / fillet)；用修正名义应力，36*；与焊趾 80 双评估（表8.5 detail2/3）。"
+      "note": "Root failure (partial penetration / fillet)；用修正名义应力，36*；与焊趾 80 双评估（表8.5 detail2/3）。",
+      "table": "8.5"
     },
     {
       "id": "W_LAPJOINT_45",
       "fat": 45,
       "name": "角焊搭接接头（横向传力，焊趾失效）",
       "verified": false,
-      "note": "Fillet welded lap joint；FAT 随搭接板厚 t1 分级（约 50/45/40），厚度断点以标准原文核对；根部失效用 36* 双评估（表8.5 detail5）。"
+      "note": "Fillet welded lap joint；FAT 随搭接板厚 t1 分级（约 50/45/40），厚度断点以标准原文核对；根部失效用 36* 双评估（表8.5 detail5）。",
+      "table": "8.5"
     },
     {
       "id": "W_OVERLAP_80",
       "fat": 80,
       "name": "重叠焊接接头（角焊，横向）",
       "verified": true,
-      "note": "Overlapped welded joint, fillet；transverse（表8.5 detail4）。"
+      "note": "Overlapped welded joint, fillet；transverse（表8.5 detail4）。",
+      "table": "8.5"
     },
     {
       "id": "W_BUTT_ASWELD",
       "fat": 100,
       "name": "横向对接焊缝（焊态，外形良好）",
       "verified": true,
-      "note": "全熔透；打磨齐平可提至 112/125（见 W_BUTT_GROUND）（表8.3）。"
+      "note": "全熔透；打磨齐平可提至 112/125（见 W_BUTT_GROUND）（表8.3）。",
+      "table": "8.3"
     },
     {
       "id": "W_BUTT_GROUND",
       "fat": 125,
       "name": "横向对接焊缝（打磨与母材齐平）",
       "verified": true,
-      "note": "两面打磨与受力方向齐平 + 100% NDT → 125；焊态 100（表8.3）。"
+      "note": "两面打磨与受力方向齐平 + 100% NDT → 125；焊态 100（表8.3）。",
+      "table": "8.3"
     }
   ],
   "improvement_methods": [

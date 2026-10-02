@@ -46,7 +46,7 @@ enum FatigueEngine {
         let d = KnowledgeBank.findDetail(detailId)
             ?? DetailCategory(id: detailId, fat: Int(penFat), name: detailId)
         return FatigueResult(
-            detailId: detailId, detailName: d.name, baseFat: d.fat,
+            detailId: detailId, detailName: d.name, baseFat: d.fat, table: d.table,
             improvements: applied.map { ($0.0, $0.1, $0.2) },
             effectiveFat: penFat, deltaSigma: deltaSigma, gammaMf: gammaMf,
             nAllowable: nAllow, nRequired: nRequired, utilization: util,

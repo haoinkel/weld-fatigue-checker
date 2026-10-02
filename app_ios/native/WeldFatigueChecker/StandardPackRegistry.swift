@@ -42,6 +42,7 @@ struct PackDetail: Codable {
     let id: String
     let fat: Int
     let name: String
+    let table: String?   // EN1993-1-9 表号（"8.1"…"8.5" 或 "8.4/8.5"），用于评估结果展示
     let verified: Bool?
     let note: String?
 }
@@ -356,7 +357,7 @@ final class StandardPackRegistry {
         let a = activePack("acceptance")
 
         let details: [DetailCategory] = (f?.detailCategories ?? []).map {
-            DetailCategory(id: $0.id, fat: $0.fat, name: $0.name)
+            DetailCategory(id: $0.id, fat: $0.fat, name: $0.name, table: $0.table)
         }
         let improvs: [ImprovementMethod] = (f?.improvementMethods ?? []).map {
             ImprovementMethod(method: $0.method, label: $0.label, factor: $0.factor, maxFat: $0.maxFat)

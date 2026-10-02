@@ -13,6 +13,9 @@ struct ResultView: View {
             GlowText(text: "评估结果", font: .title2.bold())
 
             kv("细节类别", "\(result.fatigue.detailName) (\(result.fatigue.detailId))")
+            if let tbl = result.fatigue.table {
+                kv("对比标准表", "EN 1993-1-9 表 \(tbl)")
+            }
             kv("基准 FAT", "\(result.fatigue.baseFat)")
             ForEach(result.fatigue.improvements, id: \.label) { imp in
                 kv("改善措施", "\(imp.0) ×\(imp.1) → FAT \(Int(imp.2))")

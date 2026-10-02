@@ -82,6 +82,7 @@ struct DesignReviewResult {
 }
 struct FatigueResult {
     let detailId: String; let detailName: String; let baseFat: Int
+    let table: String?   // EN1993-1-9 表号（如 "8.4"），用于展示"对比的是哪张表"
     let improvements: [(label: String, factor: Double, fatAfter: Double)]
     let effectiveFat: Double; let deltaSigma: Double; let gammaMf: Double
     let nAllowable: Double; let nRequired: Double; let utilization: Double; let pass: Bool
