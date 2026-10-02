@@ -101,7 +101,9 @@ struct MLDefectDetector {
         let attachMetric: (DetectedDefect) -> DetectedDefect = { d in
             guard let dm = depth, let k = intrinsics,
                   let m = MetricSizer.fromDepth(rect: d.rect, depth: dm, intrinsics: k) else { return d }
-            return DetectedDefect(rect: d.rect, type: d.type, pixelSize: d.pixelSize, metric: m)
+            var out = DetectedDefect(rect: d.rect, type: d.type, pixelSize: d.pixelSize)
+            out.metric = m
+            return out
         }
         if useMLModel, let url = compiledModelURL,
            let dets = try? runModel(at: url, image: image, maxCount: maxCount) {

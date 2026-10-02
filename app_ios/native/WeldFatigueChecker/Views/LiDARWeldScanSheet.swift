@@ -24,6 +24,7 @@ import simd
 final class WeldScanCoordinator {
     static let shared = WeldScanCoordinator()
     weak var arView: ARView?
+    var anchorTransform: matrix_float4x4?   // 优化点 E：位姿漂移守卫的参考位姿锚
 
     static func sampleDepthRow(_ depth: AVDepthData) -> [Float]? {
         let map = depthMapMeters(depth)
@@ -330,7 +331,7 @@ struct LiDARWeldScanSheet: View {
     private func runScan() {
         scanning = true
         // 优化点 E：若用户未手动锁定对齐，则以此刻为锚（扫描为单帧抓取，瞬时漂移≈0）
-        if !anchored { WeldScanCoordinator.shared.setAnchor() }
+        if WeldScanCoordinator.shared.anchorTransform == nil { WeldScanCoordinator.shared.setAnchor() }
         summary = "正在读取 LiDAR 深度剖面…"
         // 深度抓取需在主线程 AR 会话中，UI 反馈稍后给结果
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {

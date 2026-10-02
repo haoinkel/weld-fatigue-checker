@@ -17,6 +17,8 @@ struct IsoLimit {
     var ref: String?      // "t" 表示与板厚成比例；"b" 表示焊缝宽度基准
     var maxAbs: Double?
     var maxPore: Double?
+    var poreRate: Double?  // 气孔率上限（%），用于累计气孔率法（ISO 5817 表 2/3）
+    var formula: String?   // 等级不允许时的判定公式/原因说明（裂纹/未熔合一票否决等）
     var permitted: Bool?  // false = 该等级不允许（裂纹/未熔合/焊瘤 B,C/根部咬边 B 等一票否决）
     var add: Double?      // 比例项附加常数（余高/凸度 h≤v·ref+add）
 }
