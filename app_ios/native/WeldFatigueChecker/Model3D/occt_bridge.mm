@@ -56,6 +56,8 @@ const char* occt_last_error(void) { return g_occt_err; }
 #include <TopExp.hxx>
 #include <TopoDS_Solid.hxx>
 #include <TopoDS_Edge.hxx>
+#include <gp_Dir.hxx>      // gp_Dir（面法线，M1 几何原语提取）
+#include <algorithm>       // std::sort（板面组排序）
 #endif
 
 namespace {
@@ -182,6 +184,108 @@ namespace {
         out->solidCount = solids;
         out->minEdgeLen = (minE < FLT_MAX) ? minE : -1.0f;
         out->maxEdgeLen = maxE;
+
+        // === M1：几何原语提取（板面法线聚类 + 二面角 + 主体板厚 + 焊缝候选边）===
+        // 先网格化（参数与 buildMesh 一致），使 BRep_Tool::Triangulation 可用，供板厚投影。
+        BRepMesh_IncrementalMesh aMesher(shape, 0.5, Standard_False, Standard_True, 0.5);
+        aMesher.Perform();
+
+        // 1) 收集所有面的几何法线（B-rep 精确，优于三角化法线）
+        std::vector<gp_Dir> faceNormals;
+        for (TopExp_Explorer ex(shape, TopAbs_FACE); ex.More(); ex.Next()) {
+            const TopoDS_Face& face = TopoDS::Face(ex.Current());
+            if (face.IsNull()) continue;
+            GProp_GProps sp;
+            BRepGProp::SurfaceProperties(face, sp);
+            if (!sp.IsDone()) continue;
+            gp_Dir n = sp.Normal();
+            double m = std::sqrt(n.X()*n.X() + n.Y()*n.Y() + n.Z()*n.Z());
+            if (m < 1e-6) continue;
+            faceNormals.push_back(n);
+        }
+
+        // 2) 法线聚类（± 合并）：相近（|dot|>0.9）并入同一板面组
+        struct Cluster { gp_Dir axis; int count; };
+        std::vector<Cluster> clusters;
+        for (const auto& n : faceNormals) {
+            bool matched = false;
+            for (auto& c : clusters) {
+                double d = n.X()*c.axis.X() + n.Y()*c.axis.Y() + n.Z()*c.axis.Z();
+                if (std::abs(d) > 0.9) { c.count++; matched = true; break; }
+            }
+            if (!matched) clusters.push_back({n, 1});
+        }
+        int totalFaces = static_cast<int>(faceNormals.size());
+        std::vector<Cluster> sig;
+        for (auto& c : clusters) {
+            if (totalFaces > 0 && static_cast<double>(c.count) / totalFaces > 0.08)
+                sig.push_back(c);
+        }
+        std::sort(sig.begin(), sig.end(), [](const Cluster& a, const Cluster& b){ return a.count > b.count; });
+        out->plateGroupCount = static_cast<int>(sig.size());
+
+        if (!sig.empty()) {
+            const gp_Dir& mainN = sig[0].axis;
+            out->mainNormalX = static_cast<float>(mainN.X());
+            out->mainNormalY = static_cast<float>(mainN.Y());
+            out->mainNormalZ = static_cast<float>(mainN.Z());
+        }
+        if (sig.size() > 1) {
+            const gp_Dir& secN = sig[1].axis;
+            out->secondNormalX = static_cast<float>(secN.X());
+            out->secondNormalY = static_cast<float>(secN.Y());
+            out->secondNormalZ = static_cast<float>(secN.Z());
+            double d = std::abs(sig[0].axis.X()*secN.X() + sig[0].axis.Y()*secN.Y() + sig[0].axis.Z()*secN.Z());
+            d = std::max(0.0, std::min(1.0, d));
+            const double PI = 3.14159265358979323846;
+            double ang = std::acos(d) * 180.0 / PI;   // 面间夹角（0=平行 90=正交）
+            out->dihedralAngle = static_cast<float>(ang);
+        } else {
+            out->dihedralAngle = 0.0f;
+        }
+
+        // 3) 主体板厚：所有面顶点沿主板面法线方向投影的 max-min 跨度
+        if (!sig.empty()) {
+            const gp_Dir& mainN = sig[0].axis;
+            double pmin = 1e30, pmax = -1e30;
+            bool any = false;
+            for (TopExp_Explorer ex(shape, TopAbs_FACE); ex.More(); ex.Next()) {
+                const TopoDS_Face& face = TopoDS::Face(ex.Current());
+                if (face.IsNull()) continue;
+                TopLoc_Location loc;
+                const Handle(Poly_Triangulation)& tri = BRep_Tool::Triangulation(face, loc);
+                if (tri.IsNull()) continue;
+                gp_Trsf trf = loc.Transformation();
+                int nNodes = tri->NbNodes();
+                for (int i = 1; i <= nNodes; ++i) {
+                    gp_Pnt p = tri->Node(i).Transformed(trf);
+                    double proj = p.X()*mainN.X() + p.Y()*mainN.Y() + p.Z()*mainN.Z();
+                    if (proj < pmin) pmin = proj;
+                    if (proj > pmax) pmax = proj;
+                    any = true;
+                }
+            }
+            if (any && (pmax - pmin) > 0) out->plateThickness = static_cast<float>(pmax - pmin);
+        }
+
+        // 4) 焊缝候选边：长度突出的边（近似），长度 > 0.3*maxEdgeLen
+        if (maxE > 1e-3f) {
+            float thr = maxE * 0.3f;
+            int cand = 0;
+            for (TopExp_Explorer ex(shape, TopAbs_EDGE); ex.More(); ex.Next()) {
+                const TopoDS_Edge& e = TopoDS::Edge(ex.Current());
+                if (e.IsNull()) continue;
+                GProp_GProps eprops;
+                BRepGProp::LinearProperties(e, eprops);
+                double L = eprops.Mass();
+                if (L > thr) ++cand;
+            }
+            out->weldCandidateEdges = cand;
+        }
+
+        // 5) 几何拓扑置信度：单实体更高，装配体更低
+        out->jointHintScore = (solids <= 1) ? 0.55f : 0.40f;
+
         return 1;
     }
 

@@ -43,6 +43,16 @@ typedef struct {
     float minEdgeLen;    // 最短边长（过渡半径 r 的候选，需人工复核）
     float maxEdgeLen;    // 最长边长
     int   solidCount;    // 实体数
+
+    // === M1 新增：几何原语（OCCT 从 B-rep 提取，单位与模型一致 mm）===
+    // 用于提高 JointInference 接头判定的准确率（替代/校正阶段2 的网格法线启发式）。
+    int   plateGroupCount;     // 显著板面组数（面法线聚类后，去除占比<8%的噪声面组）
+    float mainNormalX, mainNormalY, mainNormalZ;       // 主板面法线方向（单位向量）
+    float secondNormalX, secondNormalY, secondNormalZ; // 次板面法线方向（单位向量）
+    float dihedralAngle;       // 最显著两板面间二面角（度，0=平行 90=正交）
+    float plateThickness;      // 主体板厚估计（沿主板面法线方向的厚度跨度，mm）
+    int   weldCandidateEdges;  // 焊缝候选边数（长度突出的共享边近似）
+    float jointHintScore;      // 几何拓扑粗略置信度 0..1（单实体=0.55，装配体=0.40）
 } OCCTFeatures;
 
 // 读取 STEP/IGES 并提取几何特征向量。成功返回 1（out 被填充），失败/未启用返回 0（out 不变，原因见 occt_last_error）。

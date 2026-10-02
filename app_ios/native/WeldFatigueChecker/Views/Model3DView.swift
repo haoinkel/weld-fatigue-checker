@@ -8,6 +8,24 @@ import SceneKit
 import ModelIO
 import UniformTypeIdentifiers
 
+// MARK: - M1：OCCT 几何原语（STEP/IGES 经 OCCT 提取，供 JointInference 融合提高准确率）
+/// 由 extractFeatures 从 C 结构体 OCCTFeatures 映射而来；available 表示 OCCT 是否成功提取。
+struct OCCTGeomPrimitives {
+    let thick: Double
+    let len: Double
+    let minEdge: Double
+    let jointHint: String
+    // M1 新增（来自 OCCT B-rep 精确几何）
+    let plateGroupCount: Int       // 显著板面组数
+    let mainNormal: simd_float3    // 主板面法线方向（单位向量）
+    let secondNormal: simd_float3  // 次板面法线方向
+    let dihedralAngle: Double      // 度，0=平行 90=正交
+    let plateThickness: Double     // mm
+    let weldCandidateEdges: Int
+    let jointHintScore: Double     // 0..1
+    let available: Bool
+}
+
 // MARK: - 阶段1：3D 图上标注层数据模型（M4 基础）
 enum AnnotationSeverity: Equatable {
     case pass      // 绿：满足 / 合理
@@ -40,7 +58,7 @@ struct Model3DView: View {
     @State private var overlayOpacity: Double = 0.5
     @State private var sideBySide = false
     @State private var loadedName: String = ""
-    @State private var occtFeatures: (thick: Double, len: Double, minEdge: Double, jointHint: String)? = nil
+    @State private var occtFeatures: OCCTGeomPrimitives? = nil
     @State private var selectedAnnotation: ModelAnnotation? = nil
 
     var body: some View {
@@ -167,7 +185,7 @@ struct Model3DView: View {
         DispatchQueue.global(qos: .userInitiated).async {
             var node: SCNNode?
             var errMsg: String?
-            var feat: (thick: Double, len: Double, minEdge: Double, jointHint: String)? = nil
+            var feat: OCCTGeomPrimitives? = nil
             if ext == "step" || ext == "stp" || ext == "iges" || ext == "igs" {
                 node = (ext == "step" || ext == "stp") ? loadSTEP(url, &errMsg) : loadIGES(url, &errMsg)
                 // OCCT 几何特征提取（STEP/IGES）：板厚/长度/最短边(过渡半径候选)/拓扑提示
@@ -201,7 +219,7 @@ struct Model3DView: View {
     }
 
     // OCCT 几何特征提取（仅 STEP/IGES，需 USE_OCCT 编译）。返回 nil 表示未启用或失败。
-    private func extractFeatures(_ url: URL) -> (thick: Double, len: Double, minEdge: Double, jointHint: String)? {
+    private func extractFeatures(_ url: URL) -> OCCTGeomPrimitives? {
         var feat = OCCTFeatures()
         var ok = false
         url.withUnsafeFileSystemRepresentation { ptr in
@@ -211,8 +229,18 @@ struct Model3DView: View {
         guard ok else { return nil }
         let dims = [Double(feat.bboxX), Double(feat.bboxY), Double(feat.bboxZ)].sorted()
         let hint = feat.solidCount <= 1 ? "single_solid" : "assembly_\(feat.solidCount)"
-        return (thick: max(dims[0], 1), len: max(dims[2], 1),
-                minEdge: Double(feat.minEdgeLen), jointHint: hint)
+        return OCCTGeomPrimitives(
+            thick: max(dims[0], 1), len: max(dims[2], 1),
+            minEdge: Double(feat.minEdgeLen), jointHint: hint,
+            plateGroupCount: Int(feat.plateGroupCount),
+            mainNormal: simd_float3(feat.mainNormalX, feat.mainNormalY, feat.mainNormalZ),
+            secondNormal: simd_float3(feat.secondNormalX, feat.secondNormalY, feat.secondNormalZ),
+            dihedralAngle: Double(feat.dihedralAngle),
+            plateThickness: Double(feat.plateThickness),
+            weldCandidateEdges: Int(feat.weldCandidateEdges),
+            jointHintScore: Double(feat.jointHintScore),
+            available: true
+        )
     }
 
     // MARK: - STEP / IGES（经 OCCT 桥接）
@@ -389,8 +417,8 @@ struct Model3DView: View {
         guard let node = modelNode else { return }
         // 1) 几何（板厚/长度/过渡半径候选）沿用既有逻辑填入
         fillDesign()
-        // 2) 接头假设（mesh 法线聚类 → 启发式）
-        let hyp = JointInference.inferJoint(from: node)
+        // 2) 接头假设（mesh 法线聚类 + OCCT 几何原语融合 → 启发式，准确率更高）
+        let hyp = JointInference.inferJoint(from: node, occt: occtFeatures)
         store.design.jointType = hyp.jointType
         store.design.weldType = hyp.weldType
         store.design.loadingDirection = hyp.loadingDirection

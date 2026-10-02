@@ -64,14 +64,17 @@ STEP(.step/.iges/.obj/.stl/.ply/.usdz/.glb)
 
 ## 3. 模块详细设计
 
-### M1 · 几何解析增强
-- **现状缺口**：OCCT 桥接只导出 `positions / normals / bbox / minEdgeLen`。
-- **目标原语**：
-  - 板件抽取：并行面对（parallel face pairs）聚类 → 每块板的厚度 = 对面距离。
-  - 边/角检测：相邻面法线夹角（≈90° → 角接；≈180° → 对接边）。
-  - 焊缝候选线：相邻板件的交线（共享边/邻近边）→ 后续 S5 标注锚点。
-  - 过渡半径候选：`minEdgeLen` 已是候选，需区分"焊缝过渡圆角"与"板件倒角"。
-- **实现**：扩展 `occt_bridge.mm` 的 `OCCTFeatures`（在 `USE_OCCT` 块内，不破坏既有计算），用 `TopoDS`/`BRepGProp` 拓扑遍历。无 OCCT 时用 Model I/O 网格做近似（面片法线聚类）。
+### M1 · 几何解析增强 ✅（已落地，commit 见阶段2 同批）
+- **现状**：原 OCCT 桥接仅导出 `positions / normals / bbox / minEdgeLen / faceCount / edgeCount / solidCount`。
+- **已实现原语（扩展 `occt_bridge.h` 的 `OCCTFeatures` + `occt_bridge.mm` 的 `extractFeaturesFromShape`，仅新增字段、不动 STEP 读取/三角化逻辑）**：
+  - 板面法线聚类：遍历 FACE 取 `BRepGProp::SurfaceProperties` 几何法线，按 `|dot|>0.9` 聚类（± 合并）→ `plateGroupCount`（显著组，占比>8%）。
+  - 二面角：`dihedralAngle`（最显著两板面夹角，度；0=平行 90=正交）。
+  - 主体板厚：`plateThickness`（所有面顶点沿主板面法线方向投影的 max-min 跨度，mm）。
+  - 焊缝候选边：`weldCandidateEdges`（长度 > 0.3*最长边的边计数）。
+  - 置信度基：`jointHintScore`（单实体=0.55，装配体=0.40）。
+- **融合使用**：`JointInference.inferJoint` 在 OCCT 原语可用时，以 `plateGroupCount` + `dihedralAngle` 作为权威几何源校正接头类型与置信度（从阶段2 的纯 mesh 启发式 0.2~0.55 提升至 0.6）。Swift 侧由 `OCCTGeomPrimitives` 承接 C 结构体。
+- **未做（留待后续增强）**：并行面对精确配对、共享边精确提取、过渡半径与焊缝圆角区分。当前焊缝候选边为"长边近似"，足以支撑接头判定，但不足以精确定位标注（标注精确定位依赖阶段3 的 M3）。
+- **无 OCCT 时**：`USE_OCCT` 关闭则 `occt_extract_features` 返回 0，`OCCTGeomPrimitives.available=false`，`inferJoint` 回退为纯 mesh 法线启发式（阶段2 逻辑）。
 
 ### M2 · 几何语义识别（核心难题）
 - **输入**：M1 的几何原语。
@@ -120,7 +123,8 @@ STEP(.step/.iges/.obj/.stl/.ply/.usdz/.glb)
 |---|---|---|---|---|
 | **阶段0** ✅ | 结果页显示表号；`DetailCategory.table` 接入（commit bc29850，待 CI #42 验收） | 无 | 极低 | 评估结果页显示"表 8.4" |
 | **阶段1** 🟡进行中 | M4 标注层基础：在当前评估结果（细部类别级）对应的模型上方浮标红/绿状态球 + 点击弹窗（表号/FAT/利用率/结论）；锚点先用模型包围盒顶部中心，待阶段3 的 M3 逐细部评估到位后扩展为每条焊缝各自一个锚点。不依赖 M2。 | store.result + modelNode 包围盒 | 低 | 加载模型且已评估后，模型上方出现状态球，点击显示判定详情 |
-| **阶段2** ✅ | M2a 规则引擎（Swift 侧 mesh 法线聚类启发式）：导入后自动推测 jointType/方向/传力并预填表单，全熔透标「待确认」；设计表单页回显「推测依据+置信度」。绕开 M1（未做 OCCT 深度几何）依赖，纯 Swift 实现、零 OCCT 重编译风险。 | store.design + modelNode 法线 | 低(CI) | 导入后表单自动带出接头类型+依据横幅，用户确认即可（commit，待 CI #44 验收） |
+| **M1** ✅ | 几何解析增强（OCCT B-rep 原语）：扩展 `OCCTFeatures`（板面法线聚类/二面角/板厚/焊缝候选边），`JointInference` 融合为接头判定权威源（置信度 0.2~0.55 → 0.6）。不破坏 STEP 读取/三角化。 | occt_bridge + JointInference | 中(CI OCCT交叉编译) | 导入 STEP 后推测判定命中率提升（待 CI #45 验证 OCCT 8.0.1 iOS 交叉编译通过） |
+| **阶段2** ✅ | M2a 规则引擎：导入后自动推测 jointType/方向/传力并预填表单，全熔透标「待确认」；设计表单页回显「推测依据+置信度」。**已与 M1 OCCT 原语融合**（OCCT 可用时以板面组数+二面角为权威源），无 OCCT 时回退纯 mesh 启发式。 | store.design + modelNode 法线 + OCCT 原语 | 低(CI) | 导入后表单自动带出接头类型+依据横幅，用户确认即可（commit，待 CI #44/#45 验收） |
 | **阶段3a** | 构建标注数据集（STEP 库 + 合成） | — | 中 | 数据集就绪，可训练 |
 | **阶段3b** | M2b ML 模型训练/接入（CoreML） | 3a | 高 | CoreML 分类器达到可用准确率 |
 | **阶段3c** | M3 逐细部评估 + M4/M5 全联动 | 1/2/3b | 中 | 端到端：导入→自动识别→图上标注→位置化建议 |
@@ -152,7 +156,8 @@ STEP(.step/.iges/.obj/.stl/.ply/.usdz/.glb)
 
 - [x] 阶段0：评估结果页显示 EN1993-1-9 表号。✅ 已落地（commit bc29850，待 CI #42 真机/构建验收）
 - [ ] 阶段1：3D 模型上可对焊缝位置标注红/绿/黄。（🟡 进行中：已加"整体结论"浮标 + 点击弹窗，锚点为模型顶部中心；逐焊缝锚点待 M3 逐细部评估）
-- [x] 阶段2：导入 STEP 后自动推测接头属性并预填，用户确认即可。✅ 已落地（Swift 侧 mesh 法线启发式；全熔透标待确认；设计表单页回显依据+置信度）
+- [x] 阶段2：导入 STEP 后自动推测接头属性并预填，用户确认即可。✅ 已落地（已与 M1 OCCT 几何原语融合：板面组数/二面角/板厚作为权威几何源，置信度提升至 0.6；无 OCCT 时回退纯 mesh 启发式；全熔透标待确认；设计表单页回显依据+置信度）
+- [x] M1：OCCT B-rep 几何原语提取（板面法线聚类/二面角/板厚/焊缝候选边），扩展 `OCCTFeatures` 结构体，不破坏 STEP 读取/三角化。✅ 已落地（待 CI #45 验收：OCCT 8.0.1 iOS 交叉编译通过）
 - [ ] 阶段3：全自动流水线跑通（识别→比对→标注→位置化建议），真机实测可用。
 
 > 文档版本：v1.0 · 2026-10-02 · 对应 `焊缝缺陷识别及判定_方法论与开发手册.md` §17

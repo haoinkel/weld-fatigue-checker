@@ -3,12 +3,12 @@
 // 启发式推断接头类型 / 焊缝类型 / 荷载方向 / 是否传力，并预填设计表单（半自动，需用户确认）。
 //
 // 设计约束（见 AUTO_3D_REVIEW_PLAN.md §6）：
-//   ✅ 本文件属于「识别/显示层」新增，不触碰 EN1993-1-9 评估内核（DesignReviewer / FatigueEngine）。
-//   ✅ 纯 Swift 实现，不改动 occt_bridge（无需 Mac 端重编译 OCCT，CI 验证成本最低）。
+//   ✅ 本文件属于「识别/显示层」，不触碰 EN1993-1-9 评估内核（DesignReviewer / FatigueEngine）。
+//   ✅ 阶段2 为纯 Swift mesh 法线启发式；M1 已接入 OCCT 几何原语（板面组数/二面角/板厚）做融合校正，
+//      仅增强识别层，未改动 occt_bridge 的 STEP 导入/三角化逻辑。
 //   ⚠️ 全熔透：坡口特征常不在 STEP 中建模，几何无法判定 → fullPenetration 恒为 nil（待确认），绝不臆测，
 //      避免错误判定引发工程误判（规划文档 §5 风险3）。
-//   ⚠️ 本推断为「弱启发式 + 低置信度」，定位是「减少手填负担的起点」，最终以用户确认值为准。
-//      更高准确率需 M1（OCCT 深度几何原语：平行面对 / 交线 / 夹角）支撑，列为后续增强。
+//   ⚠️ 本推断为「启发式 + 中低置信度」，定位是「减少手填负担的起点」，最终以用户确认值为准。
 
 import Foundation
 import SceneKit
@@ -59,17 +59,24 @@ struct JointInference {
     /// - Parameters:
     ///   - root: 模型根节点（已加入场景或仅本地持有均可）
     ///   - solidCount: 可选，来自 OCCT 拓扑的实体数（assembly 提示），用于微调置信度
-    static func inferJoint(from root: SCNNode, solidCount: Int? = nil) -> JointHypothesis {
+    /// 从已加载的 SCNNode（可能是层级）推断接头假设。
+    /// - Parameters:
+    ///   - root: 模型根节点（已加入场景或仅本地持有均可）
+    ///   - occt: 可选，来自 OCCT B-rep 的几何原语（板面组数/二面角/板厚等）；
+    ///           可用时作为权威几何源，校正网格法线启发式的接头类型与置信度。
+    static func inferJoint(from root: SCNNode, occt: OCCTGeomPrimitives? = nil) -> JointHypothesis {
         let normals = collectNormals(from: root)
 
+        // 退化分支：无网格法线但有 OCCT 原语，则仅依据 OCCT 原语推断
         guard !normals.isEmpty else {
+            if let o = occt, o.available { return hypothesisFromOCCT(o) }
             return JointHypothesis(
                 jointType: "cruciform", weldType: "fillet", loadingDirection: "transverse",
                 loadCarrying: true, fullPenetration: nil, confidence: 0.2,
-                rationale: "未提取到网格法线，无法几何推断，已给出保守默认（十字/传力），请人工确认。")
+                rationale: "未提取到网格法线且 OCCT 原语不可用，已给保守默认（十字/传力），请人工确认。")
         }
 
-        // 1) 法线方向聚类：把相近（|dot|>0.9）的法线归入同一板面组
+        // 1) mesh 法线聚类（阶段2 逻辑，作为规模比参考）
         var clusters: [(axis: simd_float3, count: Int)] = []
         for n in normals {
             let len = simd_length(n)
@@ -85,60 +92,97 @@ struct JointInference {
             }
             if !matched { clusters.append((axis: u, count: 1)) }
         }
-
         let total = max(clusters.reduce(0) { $0 + $1.count }, 1)
-        // 仅保留占比 > 8% 的显著板面组；其余视为噪声/倒角
         let sig = clusters.filter { Float($0.count) / Float(total) > 0.08 }
                           .sorted { $0.count > $1.count }
 
-        // 2) 依据显著板面组数 + 正交关系做启发式判定
-        let nGroups = sig.count
+        // 2) OCCT 校正源（若可用，作为权威几何信息）
+        let occtOK = (occt?.available == true)
+        let plateGroups = occtOK ? max(occt!.plateGroupCount, 1) : sig.count
+        let dihedral = occtOK ? occt!.dihedralAngle : nil      // 度
+        let ortho = dihedral.map { $0 > 70 }                   // 近似正交
+        let parallel = dihedral.map { $0 < 30 }                // 近似平行
 
-        if nGroups <= 1 {
-            // 单一板面主导 → 推断为对接（单板对接，传力）
-            let conf = (solidCount == 1) ? 0.5 : 0.45
-            return JointHypothesis(
-                jointType: "butt", weldType: "butt", loadingDirection: "transverse",
-                loadCarrying: true, fullPenetration: nil, confidence: conf,
-                rationale: "几何以单一板面为主（法线聚类仅 1 组显著）→ 推断为对接接头（单板对接）。")
-        }
+        // 3) 主判定：优先 OCCT 的板面组数 + 二面角；规模比沿用 mesh sig
+        var jt: String
+        var conf: Double
+        var base: String
 
-        if nGroups == 2 {
-            // 两组板面：看是否正交（|dot| 小）判断「相交接头」
-            let a = simd_normalize(sig[0].axis)
-            let b = simd_normalize(sig[1].axis)
-            let absDot = abs(simd_dot(a, b))
-            if absDot < 0.5 {
-                // 近似正交 → 两板相交：按组规模比判断十字 vs T/角接
-                let bigger = max(sig[0].count, sig[1].count)
-                let smaller = min(sig[0].count, sig[1].count)
-                let ratio = Double(smaller) / Double(max(bigger, 1))
-                var (jt, conf): (String, Double)
-                if ratio > 0.5 {
-                    jt = "cruciform"   // 两板规模相当 → 十字接头
-                    conf = 0.55
+        if plateGroups <= 1 {
+            jt = "butt"; conf = 0.5; base = "单一板面主导"
+        } else if plateGroups == 2 {
+            if let parallel = parallel, parallel {
+                jt = "lap"; conf = 0.5; base = "两组近似平行板面（OCCT 二面角≈\(Int(dihedral!))°）"
+            } else if let ortho = ortho, ortho {
+                // 需规模比判 cruciform/t_joint；mesh sig 不足 2 组时默认十字（保守，最常见）
+                if sig.count >= 2 {
+                    let bigger = max(sig[0].count, sig[1].count)
+                    let smaller = min(sig[0].count, sig[1].count)
+                    let ratio = Double(smaller) / Double(max(bigger, 1))
+                    jt = ratio > 0.5 ? "cruciform" : "t_joint"
                 } else {
-                    jt = "t_joint"     // 一块小附件搭另一大板 → T 型/角接类
-                    conf = 0.5
+                    jt = "cruciform"
                 }
-                return JointHypothesis(
-                    jointType: jt, weldType: "fillet", loadingDirection: "transverse",
-                    loadCarrying: true, fullPenetration: nil, confidence: conf,
-                    rationale: "检测到 2 组近似正交板面（相交接头）；按规模比 \(String(format:"%.2f", ratio)) 推断为 \(JointHypothesis.jointTypeLabel(jt))。荷载方向默认横向（最不利，请按实际传力确认）。")
+                conf = 0.6
+                base = "两组近似正交板面（OCCT 二面角≈\(Int(dihedral!))°）"
             } else {
-                // 两组近似平行（同一轴正负）→ 可能为搭接（两板平行错位）
-                return JointHypothesis(
-                    jointType: "lap", weldType: "fillet", loadingDirection: "longitudinal",
-                    loadCarrying: false, fullPenetration: nil, confidence: 0.4,
-                    rationale: "检测到 2 组近似平行板面（同一轴正负）→ 推断为搭接接头。")
+                // 二面角介于 30~70：回退 mesh 判定（同样守护 sig.count，避免越界）
+                if sig.count >= 2 {
+                    let a = simd_normalize(sig[0].axis)
+                    let b = simd_normalize(sig[1].axis)
+                    if abs(simd_dot(a, b)) < 0.5 {
+                        let bigger = max(sig[0].count, sig[1].count)
+                        let smaller = min(sig[0].count, sig[1].count)
+                        let ratio = Double(smaller) / Double(max(bigger, 1))
+                        jt = ratio > 0.5 ? "cruciform" : "t_joint"; conf = 0.5
+                    } else {
+                        jt = "lap"; conf = 0.45
+                    }
+                } else {
+                    jt = "cruciform"; conf = 0.4
+                }
+                base = "两组板面（二面角不确定 \(Int(dihedral ?? -1))°，沿用网格法线）"
             }
+        } else {
+            jt = "cruciform"; conf = 0.35; base = "多组板面（≥3 组显著）"
         }
 
-        // nGroups >= 3：多板面复杂接头，保守归为十字/角接类
-        return JointHypothesis(
-            jointType: "cruciform", weldType: "fillet", loadingDirection: "transverse",
-            loadCarrying: true, fullPenetration: nil, confidence: 0.3,
-            rationale: "检测到多组板面（≥3 组显著）→ 推断为交叉/角接类复杂接头，请人工确认具体形式。")
+        // 置信度上调：OCCT 原语可用（B-rep 精确）且已作为主判定依据
+        if occtOK { conf = max(conf, 0.6) }
+
+        let weldType = (jt == "butt") ? "butt" : "fillet"
+        let loadingDirection: String = (jt == "lap") ? "longitudinal" : "transverse"
+        let loadCarrying: Bool = (jt != "lap")
+
+        // 4) 可解释依据文本
+        var rat = "几何推理：板面组数 \(plateGroups)（\(base)）。"
+        if occtOK {
+            rat += " OCCT 原语：板面组=\(occt!.plateGroupCount)，二面角≈\(Int(occt!.dihedralAngle))°，主体板厚≈\(Int(occt!.plateThickness))mm，焊缝候选边=\(occt!.weldCandidateEdges)。"
+        } else {
+            rat += " 注：OCCT 原语不可用（未启用或 STEP 解析失败），仅基于网格法线启发式，置信度偏低。"
+        }
+        rat += " 荷载方向默认\(loadingDirection == "transverse" ? "横向（最不利）" : "纵向")，请按实际传力确认；全熔透几何无法判定→待确认。"
+
+        return JointHypothesis(jointType: jt, weldType: weldType, loadingDirection: loadingDirection,
+            loadCarrying: loadCarrying, fullPenetration: nil, confidence: conf, rationale: rat)
+    }
+
+    /// 退化分支：仅依据 OCCT 几何原语（无网格法线）推断接头假设
+    private static func hypothesisFromOCCT(_ o: OCCTGeomPrimitives) -> JointHypothesis {
+        let pg = max(o.plateGroupCount, 1)
+        let jt: String
+        if pg <= 1 { jt = "butt" }
+        else if pg == 2 {
+            if o.dihedralAngle > 70 { jt = "cruciform" }
+            else if o.dihedralAngle < 30 { jt = "lap" }
+            else { jt = "t_joint" }
+        } else { jt = "cruciform" }
+        let weldType = (jt == "butt") ? "butt" : "fillet"
+        let loadingDirection: String = (jt == "lap") ? "longitudinal" : "transverse"
+        let loadCarrying = (jt != "lap")
+        let rat = "仅 OCCT 原语（无网格法线）：板面组=\(o.plateGroupCount)，二面角≈\(Int(o.dihedralAngle))°，主体板厚≈\(Int(o.plateThickness))mm → 推断为 \(JointHypothesis.jointTypeLabel(jt))，请人工确认。"
+        return JointHypothesis(jointType: jt, weldType: weldType, loadingDirection: loadingDirection,
+            loadCarrying: loadCarrying, fullPenetration: nil, confidence: 0.5, rationale: rat)
     }
 
     // MARK: - 几何法线收集（安全读取，避免指针越界崩溃）
