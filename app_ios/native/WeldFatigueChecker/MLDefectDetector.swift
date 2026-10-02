@@ -181,6 +181,12 @@ struct MLDefectDetector {
     /// 进程内只加载一次。锁保护（照片页主线程 / 实时扫描相机队列并发调用）。
     private static let modelLock = NSLock()
     private static var _cachedRequest: VNCoreMLRequest?
+    /// 模型内嵌 NMS 阈值(0.25)是否已被覆盖为 0.05（诊断展示用）
+    private static var _nmsThresholdOverridden = false
+    static var nmsThresholdOverridden: Bool {
+        modelLock.lock(); defer { modelLock.unlock() }
+        return _nmsThresholdOverridden
+    }
 
     private static func cachedRequest(for url: URL) throws -> VNCoreMLRequest {
         modelLock.lock(); defer { modelLock.unlock() }
@@ -190,7 +196,22 @@ struct MLDefectDetector {
             // Neural Engine 优先（iOS 16+），避免与相机预览争 GPU 导致抖动
             cfg.computeUnits = .cpuAndNeuralEngine
         }
-        let model = try MLModel(contentsOf: url, configuration: cfg)
+        // 关键：模型内嵌 NMS 的 confidenceThreshold 出厂默认 0.25（模型描述里写明可覆盖）。
+        // 不覆盖时，原始分数 <0.25 的框在模型内部就被丢弃 —— 域外照片（暗光/粉笔字/角焊缝）
+        // 分数普遍 <0.25 → 模型输出 0 框 → App 端"永远检不出"。压到 0.05 让候选尽量浮出，
+        // 真正的分级过滤交给 App 端 threshold(for:)（灵敏度可调）。
+        // 若参数键不被该模型支持（MLModel 加载抛错），回退不覆盖加载（默认 0.25 行为不变）。
+        cfg.parameters = [MLParameterKey.confidenceThreshold: 0.05]
+        _nmsThresholdOverridden = true
+        let model: MLModel
+        do {
+            model = try MLModel(contentsOf: url, configuration: cfg)
+        } catch {
+            _nmsThresholdOverridden = false
+            let plain = MLModelConfiguration()
+            if #available(iOS 16.0, *) { plain.computeUnits = .cpuAndNeuralEngine }
+            model = try MLModel(contentsOf: url, configuration: plain)
+        }
         let vnModel = try VNCoreMLModel(for: model)
         let request = VNCoreMLRequest(model: vnModel)
         // scaleFill：原图非等比拉伸到 640×640 模型输入；YOLO 输出归一化坐标直接对应原图
@@ -215,6 +236,8 @@ struct MLDefectDetector {
         guard let results = request.results else { return [] }
 
         // 收集 YOLO NMS 双输出：coordinates (M,4) + confidence (M, nc)。
+        // 兼容带 batch 维的导出（(1,M,4)/(1,M,nc)）—— 旧实现按 shape[0]=M/shape[1]=nc 读取，
+        // 遇 batch 维时 count=1、nc=M ≠ 类别数 → 静默返回空，真机表现即"永远检不出"。
         var coordsMA: MLMultiArray?
         var confMA: MLMultiArray?
         for obs in results {
@@ -224,18 +247,25 @@ struct MLDefectDetector {
             case "coordinates": coordsMA = ma
             case "confidence":  confMA = ma
             default:
-                // 形状兜底：featureName 不符时按形状推断（(M,4) 坐标 / (M,nc) 置信）
-                if let ma, ma.shape.count == 2 {
-                    if ma.shape[1].intValue == 4 { coordsMA = coordsMA ?? ma }
-                    else if ma.shape[1].intValue == classNames.count { confMA = confMA ?? ma }
+                // 形状兜底：featureName 不符时按形状推断（最后一维 4=坐标 / =nc=置信）
+                if let ma, let d = Self.matDims(ma) {
+                    if d.k == 4 { coordsMA = coordsMA ?? ma }
+                    else if d.k == classNames.count { confMA = confMA ?? ma }
                 }
             }
         }
-        guard let coords = coordsMA, let conf = confMA else { return [] }
+        guard let coords = coordsMA, let conf = confMA,
+              let cd = Self.matDims(coords), cd.k == 4,
+              let fd = Self.matDims(conf) else { return [] }
 
-        let count = Int(coords.shape[0].intValue)
-        let nc = Int(conf.shape[1].intValue)
-        guard count > 0, nc == classNames.count else { return [] }
+        let count = cd.m
+        // 置信度列数：严格等于类别数；或为类别数+1（个别导出会附加背景列，取末列忽略）
+        var nc = fd.k
+        let confOffset = 0
+        if nc == classNames.count + 1 {
+            nc = classNames.count   // 背景列在末尾（Ultralytics v5 风格），忽略
+        }
+        guard count > 0, nc == classNames.count, fd.m == count else { return [] }
 
         let imgW = Double(cg.width), imgH = Double(cg.height)
 
@@ -245,7 +275,7 @@ struct MLDefectDetector {
             // confidence[i] = (nc,) 类分数向量，取 argmax 作为类别与分数
             var best = -1, bestScore = 0.0
             for c in 0 ..< nc {
-                let s = conf[i * nc + c].doubleValue
+                let s = conf[confOffset + i * fd.k + c].doubleValue
                 if s > bestScore { bestScore = s; best = c }
             }
             let clsName = (best < classNames.count) ? classNames[best] : nil
@@ -290,6 +320,15 @@ struct MLDefectDetector {
     }
 
     // MARK: - 非极大抑制（仅 nms=False 导出时使用）
+
+    /// 输出形状归一化：(M,k) 或带 batch 维的 (1,M,k) → (行数 m, 列数 k)；其余布局返回 nil。
+    /// 假设默认连续内存布局（Core ML 输出均为默认 stride，batch=1 时行偏移恰为 i*k+j）。
+    private static func matDims(_ ma: MLMultiArray) -> (m: Int, k: Int)? {
+        let s = ma.shape
+        if s.count == 2 { return (Int(s[0].intValue), Int(s[1].intValue)) }
+        if s.count == 3, s[0].intValue == 1 { return (Int(s[1].intValue), Int(s[2].intValue)) }
+        return nil
+    }
 
     private static func nms(candidates: [(rect: CGRect, type: String, pixelSize: CGSize, score: Double)],
                             iouThresh: Double) -> [(rect: CGRect, type: String, pixelSize: CGSize, score: Double)] {

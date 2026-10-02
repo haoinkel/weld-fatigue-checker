@@ -634,11 +634,13 @@ struct PhotoCheckView: View {
         }
         regradeAll()   // 识别完成后按累计气孔率法统一重评（含气孔双判据）
         let engine = MLDefectDetector.engineName
+        let nmsInfo = MLDefectDetector.nmsThresholdOverridden
+            ? "NMS阈值已降至0.05；" : "NMS阈值0.25(运行时覆盖未生效)；"
         let diag: String = {
             guard MLDefectDetector.lastUsedML else { return "（本次实际走 CV 规则回退，模型推理未成功）" }
             return MLDefectDetector.sensitivity == .standard
-                ? " 可把「灵敏度」调到「极灵敏」再试一次。"
-                : " 已在最高灵敏度仍未检出。"
+                ? " " + nmsInfo + "可把「灵敏度」调到「极灵敏」再试一次。"
+                : " " + nmsInfo + "已在最高灵敏度仍未检出。"
         }()
         store.autoState = (detects.isEmpty
             ? "未检测到明显视觉异常（\(engine)）。模型原始置信度 Top：\(MLDefectDetector.lastRawScoresText)。\(diag)" +
