@@ -6,16 +6,16 @@ import SwiftUI
 
 // MARK: - 调色板
 enum Theme {
-    // 背景：极深蓝黑渐变
-    static let bgTop    = Color(red: 0.027, green: 0.043, blue: 0.071) // #070B12
-    static let bgBottom = Color(red: 0.043, green: 0.071, blue: 0.114) // #0B122D
+    // 背景：深蓝灰渐变（非纯黑，车间强光下更柔和、层次更清晰）
+    static let bgTop    = Color(red: 0.118, green: 0.161, blue: 0.243) // #1E293D
+    static let bgBottom = Color(red: 0.082, green: 0.125, blue: 0.200) // #152033
     static let bgGradient = LinearGradient(
         colors: [bgTop, bgBottom],
         startPoint: .top, endPoint: .bottom)
 
-    // 面板：略带蓝的暗灰，带细微高光
-    static let panelTop    = Color(red: 0.094, green: 0.122, blue: 0.188) // #18203 0
-    static let panelBottom = Color(red: 0.062, green: 0.086, blue: 0.141) // #0F1624
+    // 面板：比背景更亮的蓝灰，带细微高光，保证卡片悬浮感
+    static let panelTop    = Color(red: 0.165, green: 0.208, blue: 0.290) // #2A3550
+    static let panelBottom = Color(red: 0.110, green: 0.153, blue: 0.227) // #1C273A
     static let panelGradient = LinearGradient(
         colors: [panelTop, panelBottom],
         startPoint: .topLeading, endPoint: .bottomTrailing)
