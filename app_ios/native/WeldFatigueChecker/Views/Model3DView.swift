@@ -8,6 +8,29 @@ import SceneKit
 import ModelIO
 import UniformTypeIdentifiers
 
+// MARK: - 阶段1：3D 图上标注层数据模型（M4 基础）
+enum AnnotationSeverity: Equatable {
+    case pass      // 绿：满足 / 合理
+    case fail      // 红：不满足 / 不合理
+    case pending   // 黄：待确认
+}
+
+struct ModelAnnotation: Identifiable, Equatable {
+    let id = UUID()
+    let position: SCNVector3
+    let radius: Float
+    let severity: AnnotationSeverity
+    let title: String
+    let detail: String
+
+    // 仅按内容比较（忽略 id），避免每次 body 重建都触发场景重绘
+    static func == (lhs: ModelAnnotation, rhs: ModelAnnotation) -> Bool {
+        lhs.position.x == rhs.position.x && lhs.position.y == rhs.position.y && lhs.position.z == rhs.position.z
+            && lhs.radius == rhs.radius && lhs.severity == rhs.severity
+            && lhs.title == rhs.title && lhs.detail == rhs.detail
+    }
+}
+
 struct Model3DView: View {
     @EnvironmentObject var store: Store
     @State private var showPicker = false
@@ -18,6 +41,7 @@ struct Model3DView: View {
     @State private var sideBySide = false
     @State private var loadedName: String = ""
     @State private var occtFeatures: (thick: Double, len: Double, minEdge: Double, jointHint: String)? = nil
+    @State private var selectedAnnotation: ModelAnnotation? = nil
 
     var body: some View {
         NavigationView {
@@ -51,10 +75,12 @@ struct Model3DView: View {
                     if sideBySide, let photo = store.photo {
                         HStack(spacing: 0) {
                             Image(uiImage: photo).resizable().scaledToFit()
-                            Model3DSceneView(node: $modelNode).frame(maxWidth: .infinity)
+                            Model3DSceneView(node: $modelNode, annotations: buildAnnotations(), selected: $selectedAnnotation)
+                                .frame(maxWidth: .infinity)
                         }
                     } else {
-                        Model3DSceneView(node: $modelNode).frame(maxWidth: .infinity)
+                        Model3DSceneView(node: $modelNode, annotations: buildAnnotations(), selected: $selectedAnnotation)
+                            .frame(maxWidth: .infinity)
                         if let photo = store.photo {
                             Image(uiImage: photo).resizable().scaledToFit()
                                 .opacity(overlayOpacity)
@@ -65,6 +91,27 @@ struct Model3DView: View {
                 }
                 .frame(maxHeight: .infinity)
                 .background(Theme.panelBottom)
+                .overlay(alignment: .topLeading) {
+                    if let sel = selectedAnnotation {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 8) {
+                                Circle()
+                                    .fill(sel.severity == .pass ? Color.green : (sel.severity == .fail ? Color.red : Color.yellow))
+                                    .frame(width: 10, height: 10)
+                                Text(sel.title).bold().foregroundStyle(Theme.textPrimary)
+                                Spacer(minLength: 4)
+                                Button { selectedAnnotation = nil } label: {
+                                    Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.textSecondary)
+                                }
+                            }
+                            Text(sel.detail).font(.caption).foregroundStyle(Theme.textSecondary)
+                        }
+                        .padding(10)
+                        .background(Theme.panelGradient, in: RoundedRectangle(cornerRadius: 10))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.cyan.opacity(0.3), lineWidth: 1))
+                        .padding()
+                    }
+                }
 
                 Text(status).font(.caption2).foregroundStyle(Theme.textSecondary)
                     .padding(.horizontal)
@@ -329,13 +376,46 @@ struct Model3DView: View {
         store.design.attachmentLengthMm = max(len, 1)
         status = "已填入设计表单：板厚≈\(Int(thick))mm，长度≈\(Int(len))mm（按模型单位为 mm 假设；若模型单位为 m 请除以 1000）。"
     }
+
+    // MARK: - 阶段1：根据最新评估结果，在 3D 模型上方生成状态标注锚点
+    private func buildAnnotations() -> [ModelAnnotation] {
+        guard let node = modelNode, let result = store.result else { return [] }
+        let (mn, mx) = node.boundingBox
+        let center = SCNVector3((mn.x + mx.x) / 2, (mn.y + mx.y) / 2, (mn.z + mx.z) / 2)
+        let size = max(mx.x - mn.x, max(mx.y - mn.y, mx.z - mn.z))
+        let radius = max(size * 0.03, 1)
+        let anchor = SCNVector3(center.x, mx.y + radius * 2.5, center.z)  // 浮于模型顶部之上
+        let sev: AnnotationSeverity = result.fatigue.pass ? .pass : .fail
+        let title = result.fatigue.detailName
+        let verdict = result.fatigue.pass ? "满足 ✓" : (result.fatigue.defectForcedFail ? "缺陷强制判废 ✗" : "不满足 ✗")
+        let detail = "对比标准表：EN 1993-1-9 表 \(result.fatigue.table ?? "—")\n有效 FAT \(Int(result.fatigue.effectiveFat)) · 利用率 \(String(format: "%.2f", result.fatigue.utilization)) · \(verdict)"
+        return [ModelAnnotation(position: anchor, radius: radius, severity: sev, title: title, detail: detail)]
+    }
 }
 
-// MARK: - SceneKit 渲染容器（UIViewRepresentable）
+// MARK: - SceneKit 渲染容器（UIViewRepresentable）+ 阶段1 标注层
 struct Model3DSceneView: UIViewRepresentable {
     @Binding var node: SCNNode?
+    var annotations: [ModelAnnotation]
+    @Binding var selected: ModelAnnotation?
 
-    final class Coordinator { var attached: SCNNode? }
+    final class Coordinator: NSObject {
+        var attached: SCNNode?
+        var annotationNodes: SCNNode?
+        var annotations: [ModelAnnotation] = []
+        var onSelect: ((ModelAnnotation) -> Void)?
+        @objc func handleTap(_ g: UITapGestureRecognizer) {
+            guard let view = g.view as? SCNView else { return }
+            guard let hit = view.hitTest(g.location(in: view), options: nil).first else { return }
+            var n: SCNNode? = hit.node
+            while let cur = n {
+                if let name = cur.name, let ann = annotations.first(where: { $0.id.uuidString == name }) {
+                    onSelect?(ann); return
+                }
+                n = cur.parent
+            }
+        }
+    }
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeUIView(context: Context) -> SCNView {
@@ -345,32 +425,71 @@ struct Model3DSceneView: UIViewRepresentable {
         view.antialiasingMode = .multisampling4X
         view.backgroundColor = .clear
         view.scene = SCNScene()
+        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap(_:)))
+        view.addGestureRecognizer(tap)
+        context.coordinator.onSelect = { a in selected = a }
         return view
     }
 
     func updateUIView(_ view: SCNView, context: Context) {
-        // 只在模型真正变化时重建场景/相机；否则拖动透明度滑杆等状态刷新会重置用户视角
-        guard context.coordinator.attached !== node else { return }
-        context.coordinator.attached = node
-        view.scene?.rootNode.childNodes.forEach { $0.removeFromParentNode() }
-        guard let n = node else { return }
-        view.scene?.rootNode.addChildNode(n)
-        // 自动取景：把相机放到包围盒对角方向
-        let (mn, mx) = n.boundingBox
-        let center = SCNVector3((mn.x + mx.x) / 2, (mn.y + mx.y) / 2, (mn.z + mx.z) / 2)
-        let size = max(mx.x - mn.x, max(mx.y - mn.y, mx.z - mn.z))
-        let dist = max(size * 1.8, 0.1)
-        let distD = Double(dist)  // iOS 上 SCNVector3 分量是 Float，SCNCamera 的 zNear/zFar 是 Double
-        let cam = SCNNode()
-        let camera = SCNCamera()
-        // 关键：模型是 mm 级（可达上万单位），SceneKit 默认 zFar=100 会把整个模型裁掉导致黑屏
-        camera.zNear = max(distD * 0.01, 0.01)
-        camera.zFar = distD * 10
-        camera.wantsHDR = true
-        cam.camera = camera
-        cam.position = SCNVector3(center.x + dist, center.y + dist * 0.5, center.z + dist)
-        cam.look(at: center)
-        view.scene?.rootNode.addChildNode(cam)
-        view.pointOfView = cam
+        // 模型节点变化时才重建（避免重置用户视角）
+        if context.coordinator.attached !== node {
+            context.coordinator.attached = node
+            view.scene?.rootNode.childNodes.forEach { $0.removeFromParentNode() }
+            context.coordinator.annotationNodes = nil
+            context.coordinator.annotations = []
+            guard let n = node else { return }
+            view.scene?.rootNode.addChildNode(n)
+            // 自动取景：把相机放到包围盒对角方向
+            let (mn, mx) = n.boundingBox
+            let center = SCNVector3((mn.x + mx.x) / 2, (mn.y + mx.y) / 2, (mn.z + mx.z) / 2)
+            let size = max(mx.x - mn.x, max(mx.y - mn.y, mx.z - mn.z))
+            let dist = max(size * 1.8, 0.1)
+            let distD = Double(dist)  // iOS 上 SCNVector3 分量是 Float，SCNCamera 的 zNear/zFar 是 Double
+            let cam = SCNNode()
+            let camera = SCNCamera()
+            // 关键：模型是 mm 级（可达上万单位），SceneKit 默认 zFar=100 会把整个模型裁掉导致黑屏
+            camera.zNear = max(distD * 0.01, 0.01)
+            camera.zFar = distD * 10
+            camera.wantsHDR = true
+            cam.camera = camera
+            cam.position = SCNVector3(center.x + dist, center.y + dist * 0.5, center.z + dist)
+            cam.look(at: center)
+            view.scene?.rootNode.addChildNode(cam)
+            view.pointOfView = cam
+        }
+        // 标注层变化时才重建（独立容器节点，不污染 mesh）
+        if context.coordinator.annotations != annotations {
+            context.coordinator.annotations = annotations
+            context.coordinator.annotationNodes?.removeFromParentNode()
+            let container = SCNNode()
+            for ann in annotations {
+                let marker = makeMarker(ann)
+                marker.name = ann.id.uuidString
+                container.addChildNode(marker)
+            }
+            view.scene?.rootNode.addChildNode(container)
+            context.coordinator.annotationNodes = container
+        }
+    }
+
+    private func makeMarker(_ ann: ModelAnnotation) -> SCNNode {
+        let geo = SCNSphere(radius: CGFloat(ann.radius))
+        let mat = SCNMaterial()
+        let color: UIColor = (ann.severity == .pass) ? .systemGreen
+            : (ann.severity == .fail ? .systemRed : .systemYellow)
+        mat.diffuse.contents = color
+        mat.emission.contents = color
+        mat.emission.intensity = 0.6
+        geo.materials = [mat]
+        let node = SCNNode(geometry: geo)
+        node.position = ann.position
+        // 呼吸动画，提示可点击
+        let pulse = SCNAction.sequence([
+            .scale(to: 1.25, duration: 0.8),
+            .scale(to: 1.0, duration: 0.8)
+        ])
+        node.runAction(.repeatForever(pulse))
+        return node
     }
 }

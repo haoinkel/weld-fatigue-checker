@@ -29,7 +29,7 @@
 - 评估引擎：`DesignReviewer.reviewDesign` / `FatigueEngine.constantAmplitudeCheck` / `evaluateImperfections` / `suggestImprovements` 已具备；但粒度是**"细节类别级"**（整体），**不带几何坐标**。
 - `Model3DSceneView`：仅渲染 mesh，**无任何标注/高亮节点**（overlay 只是照片叠加透明度）。
 - `KnowledgeBank.DetailCategory`（KnowledgeBank.swift:12）：仅 `id / fat / name` —— **JSON 里的 `table` 字段加载时被丢弃**，结果页不显示表号。
-- `en1993_1_9.json`：每个 detail 含 `id/table/fat/stress_type/name/verified_from_ocr/source/note`，表号覆盖 **8.1 / 8.2 / 8.3 / 8.4 / 8.5**（注意：8.6 在现行 EN1993-1-9:2005 中属"正交异性桥面板"补充细节，需核实是否纳入本库）。
+- `en1993_1_9.json`：每个 detail 含 `id/table/fat/stress_type/name/verified_from_ocr/source/note`，**当前**表号覆盖 **8.1 / 8.2 / 8.3 / 8.4 / 8.5（含 8.4/8.5 组合）**；**8.6 已纳入目标比对范围（8.1~8.6），但数据集暂无 8.6 条目，列为待补数据项**（见 §5 风险5）。
 
 **结论**：S1/S4/S6 的"引擎"已就绪；缺口集中在 **S2（识别）、S5（标注）、S3/S6 的位置关联**。
 
@@ -95,7 +95,7 @@ STEP(.step/.iges/.obj/.stl/.ply/.usdz/.glb)
   - **M2b ML 几何识别（研究级）**：PointNet / GraphNN 对网格分类；需标注数据集（现有 STEP 库 + 程序化合成）。**复用现有 CoreML 管线**导出 `.mlpackage`。
 
 ### M3 · 细节匹配 + 位置关联（改造现有，低风险）
-- `KnowledgeBank.DetailCategory` 增加 `table` 字段（JSON 已含）→ 结果页显示 **"对比的是 EN1993-1-9 表 8.4"**（顺带完成阶段0）。
+- `KnowledgeBank.DetailCategory` 增加 `table` 字段（JSON 已含）→ 结果页显示 **"对比标准表：EN 1993-1-9 表 X.X"**（X.X 为 8.1~8.6 中实际命中的表号；顺带完成阶段0）。
 - 把 `reviewDesign` 从"整体细节"升级为 **"逐细部"（per-weld-seam）**：对 M1 检测到的每条焊缝候选线，独立跑 `matchDetail` + `constantAmplitudeCheck`，返回 **关注位置列表** `{geometryAnchor, detailId, table, fat, utilization, pass}`。
 - 数据基础：`en1993_1_9.json` 的 `detail_categories` 已足够（id/table/fat/name/note）。
 
@@ -118,8 +118,8 @@ STEP(.step/.iges/.obj/.stl/.ply/.usdz/.glb)
 
 | 阶段 | 范围 | 依赖 | 风险 | 验收 |
 |---|---|---|---|---|
-| **阶段0** | 结果页显示表号；`DetailCategory.table` 接入 | 无 | 极低 | 评估结果页显示"表 8.4" |
-| **阶段1** | M4 标注层基础：在 M1 焊缝候选线放标记（不依赖 M2） | M1 焊缝线 | 低 | 模型上可见红/绿标记，点击弹窗 |
+| **阶段0** ✅ | 结果页显示表号；`DetailCategory.table` 接入（commit bc29850，待 CI #42 验收） | 无 | 极低 | 评估结果页显示"表 8.4" |
+| **阶段1** 🟡进行中 | M4 标注层基础：在当前评估结果（细部类别级）对应的模型上方浮标红/绿状态球 + 点击弹窗（表号/FAT/利用率/结论）；锚点先用模型包围盒顶部中心，待阶段3 的 M3 逐细部评估到位后扩展为每条焊缝各自一个锚点。不依赖 M2。 | store.result + modelNode 包围盒 | 低 | 加载模型且已评估后，模型上方出现状态球，点击显示判定详情 |
 | **阶段2** | M2a 规则引擎：导入后自动猜 jointType/方向并预填表单 + 高亮证据，用户确认 | M1 | 中 | 导入后表单自动带出接头类型，一键确认 |
 | **阶段3a** | 构建标注数据集（STEP 库 + 合成） | — | 中 | 数据集就绪，可训练 |
 | **阶段3b** | M2b ML 模型训练/接入（CoreML） | 3a | 高 | CoreML 分类器达到可用准确率 |
@@ -135,7 +135,7 @@ STEP(.step/.iges/.obj/.stl/.ply/.usdz/.glb)
 2. **几何推理准确率**：规则引擎覆盖有限情形；ML 需数据且泛化难。
 3. **全熔透从几何推断困难**：坡口特征在 STEP 中常不建模 → 必须设"待确认"，不能臆测（避免错误判定引发工程误判）。
 4. **评估粒度升级**：`reviewDesign` 从整体→逐细部需重构，须遵守**核心功能约束**（EN1993-1-9 评估逻辑不可删改，只许加"在哪跑/怎么显示"）。
-5. **表 8.6 范围**：现行 EN1993-1-9:2005 的 8.6 属正交异性桥面板补充，需确认是否纳入本库，避免比对越界。
+5. **表 8.6 数据缺口**：目标比对范围已明确为 **8.1~8.6**（用户确认），但 `en1993_1_9.json` 当前无 8.6 条目（仅 8.1–8.5 + 8.4/8.5）。若需覆盖 8.6，须先补入其 detail_categories（来源由用户确认或据 EN1993-1-9 原文录入），否则 8.6 只会"显示无匹配"而非"比对越界"。
 
 ---
 
@@ -150,8 +150,8 @@ STEP(.step/.iges/.obj/.stl/.ply/.usdz/.glb)
 
 ## 7. 立项目标（Definition of Done）
 
-- [ ] 阶段0：评估结果页显示 EN1993-1-9 表号。
-- [ ] 阶段1：3D 模型上可对焊缝位置标注红/绿/黄。
+- [x] 阶段0：评估结果页显示 EN1993-1-9 表号。✅ 已落地（commit bc29850，待 CI #42 真机/构建验收）
+- [ ] 阶段1：3D 模型上可对焊缝位置标注红/绿/黄。（🟡 进行中：已加"整体结论"浮标 + 点击弹窗，锚点为模型顶部中心；逐焊缝锚点待 M3 逐细部评估）
 - [ ] 阶段2：导入 STEP 后自动推测接头属性并预填，用户确认即可。
 - [ ] 阶段3：全自动流水线跑通（识别→比对→标注→位置化建议），真机实测可用。
 
