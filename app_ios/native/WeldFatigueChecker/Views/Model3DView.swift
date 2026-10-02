@@ -40,12 +40,14 @@ struct ModelAnnotation: Identifiable, Equatable {
     let severity: AnnotationSeverity
     let title: String
     let detail: String
+    let plan: [PlanItem]   // M5：该锚点对应的改进建议（位置关联，来自逐焊缝评估的 plan）
 
     // 仅按内容比较（忽略 id），避免每次 body 重建都触发场景重绘
         static func == (lhs: ModelAnnotation, rhs: ModelAnnotation) -> Bool {
             lhs.position.x == rhs.position.x && lhs.position.y == rhs.position.y && lhs.position.z == rhs.position.z
                 && lhs.radius == rhs.radius && lhs.severity == rhs.severity
                 && lhs.title == rhs.title && lhs.detail == rhs.detail
+                && lhs.plan == rhs.plan
         }
     }
 
@@ -143,7 +145,34 @@ struct ModelAnnotation: Identifiable, Equatable {
                                 }
                             }
                             Text(sel.detail).font(.caption).foregroundStyle(Theme.textSecondary)
+                            if !sel.plan.isEmpty {
+                                Divider().background(Theme.cyan.opacity(0.25))
+                                Text("改进建议（位置关联 M5）").font(.caption2.bold())
+                                    .foregroundStyle(Theme.textPrimary)
+                                ForEach(sel.plan, id: \.ruleId) { p in
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        HStack(spacing: 6) {
+                                            Text(p.priority.uppercased())
+                                                .font(.system(size: 9, weight: .bold))
+                                                .padding(.horizontal, 5).padding(.vertical, 2)
+                                                .background(planPriorityColor(p.priority))
+                                                .foregroundStyle(.white)
+                                                .clipShape(Capsule())
+                                            Text(p.title).font(.caption2.bold())
+                                                .foregroundStyle(Theme.textPrimary)
+                                        }
+                                        Text(p.action).font(.caption2)
+                                            .foregroundStyle(Theme.textSecondary)
+                                        if let fat = p.raisesFatTo {
+                                            Text("目标 FAT → \(fat)")
+                                                .font(.caption2.bold())
+                                                .foregroundStyle(Theme.cyan)
+                                        }
+                                    }
+                                }
+                            }
                         }
+                        .frame(maxWidth: 300)
                         .padding(10)
                         .background(Theme.panelGradient, in: RoundedRectangle(cornerRadius: 10))
                         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.cyan.opacity(0.3), lineWidth: 1))
@@ -541,7 +570,8 @@ struct ModelAnnotation: Identifiable, Equatable {
                 let detail = "焊缝 #\(s.index)\n对比标准表：EN 1993-1-9 表 \(r.table ?? "—")\n有效 FAT \(Int(r.effectiveFat)) · 利用率 \(String(format: "%.2f", r.utilization)) · \(verdict)\n\(s.note)"
                 return ModelAnnotation(position: SCNVector3(s.position.x, s.position.y, s.position.z),
                                       radius: radius, severity: sev,
-                                      title: "焊缝 #\(s.index) · \(r.detailName)", detail: detail)
+                                      title: "焊缝 #\(s.index) · \(r.detailName)", detail: detail,
+                                      plan: s.assessment.plan)
             }
         }
         // 退回：阶段1 单浮标（整体结论）
@@ -555,7 +585,17 @@ struct ModelAnnotation: Identifiable, Equatable {
         let title = result.fatigue.detailName
         let verdict = result.fatigue.pass ? "满足 ✓" : (result.fatigue.defectForcedFail ? "缺陷强制判废 ✗" : "不满足 ✗")
         let detail = "对比标准表：EN 1993-1-9 表 \(result.fatigue.table ?? "—")\n有效 FAT \(Int(result.fatigue.effectiveFat)) · 利用率 \(String(format: "%.2f", result.fatigue.utilization)) · \(verdict)"
-        return [ModelAnnotation(position: anchor, radius: radius, severity: sev, title: title, detail: detail)]
+        return [ModelAnnotation(position: anchor, radius: radius, severity: sev, title: title, detail: detail, plan: result.plan)]
+    }
+
+    // M5：建议优先级 → 颜色（与结果页 tag() 配色一致）
+    private func planPriorityColor(_ p: String) -> Color {
+        switch p {
+        case "high":   return .red
+        case "medium": return .orange
+        case "low":    return .blue
+        default:       return .green
+        }
     }
 }
 

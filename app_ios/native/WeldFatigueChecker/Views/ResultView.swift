@@ -127,6 +127,22 @@ struct ResultView: View {
                                 .font(.caption2).foregroundStyle(Theme.warn)
                         }
                         Text(s.note).font(.caption2).foregroundStyle(Theme.textSecondary)
+                        if !s.assessment.plan.isEmpty {
+                            Divider().background(Theme.cyan.opacity(0.2))
+                            Text("位置化建议（M5）").font(.caption2.bold()).foregroundStyle(Theme.textPrimary)
+                            ForEach(s.assessment.plan, id: \.ruleId) { p in
+                                VStack(alignment: .leading, spacing: 1) {
+                                    HStack(spacing: 6) {
+                                        tag(p.priority)
+                                        Text(p.title).font(.caption2.bold())
+                                    }
+                                    Text(p.action).font(.caption2).foregroundStyle(Theme.textSecondary)
+                                    if let fat = p.raisesFatTo {
+                                        Text("目标 FAT → \(fat)").font(.caption2.bold()).foregroundStyle(Theme.cyan)
+                                    }
+                                }
+                            }
+                        }
                     }
                     .techCard()
                 }

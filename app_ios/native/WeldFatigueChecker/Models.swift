@@ -93,7 +93,7 @@ struct ImperfectionResult {
     let label: String; let accepted: Bool?; let limit: String; let fatigueRelevant: Bool
     let notPermitted: Bool   // true = 该质量等级不允许(裂纹/未熔合/焊瘤 B,C/根部咬边 B…)，一票否决强制判废
 }
-struct PlanItem {
+struct PlanItem: Equatable {
     let priority: String; let ruleId: String; let title: String
     let action: String; let raisesFatTo: Int?; let effort: String
 }
