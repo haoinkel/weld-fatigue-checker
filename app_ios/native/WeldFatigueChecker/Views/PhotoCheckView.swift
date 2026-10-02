@@ -744,7 +744,8 @@ struct AnnotationPhotoView: View {
     // 焊缝区域(ROI)框选
     @Binding var roiMode: Bool
     @Binding var weldSeamROI: CGRect?
-    @GestureState private var roiDrag: (CGPoint, CGPoint)? = nil
+    @State private var roiDragStart: CGPoint? = nil
+    @State private var roiDragCurrent: CGPoint? = nil
 
     var body: some View {
         GeometryReader { geo in
@@ -830,9 +831,9 @@ struct AnnotationPhotoView: View {
                         .background(Color.green.opacity(0.85), in: RoundedRectangle(cornerRadius: 5))
                         .position(x: rs.midX, y: max(rect.minY + 12, rs.minY - 10))
                 }
-                if let drag = roiDrag {
-                    let n0 = CGPoint(x: min(drag.0.x, drag.1.x), y: min(drag.0.y, drag.1.y))
-                    let n1 = CGPoint(x: max(drag.0.x, drag.1.x), y: max(drag.0.y, drag.1.y))
+                if let s = roiDragStart, let c = roiDragCurrent {
+                    let n0 = CGPoint(x: min(s.x, c.x), y: min(s.y, c.y))
+                    let n1 = CGPoint(x: max(s.x, c.x), y: max(s.y, c.y))
                     let rs = CGRect(x: n0.x, y: n0.y, width: n1.x - n0.x, height: n1.y - n0.y)
                     Rectangle()
                         .stroke(Color.green, lineWidth: 2)
@@ -863,22 +864,24 @@ struct AnnotationPhotoView: View {
                     imperfections.append(ImperfectionInput(type: "undercut", sizeMm: nil, poreMm: nil, location: loc))
                 }
             }
-            // 焊缝区域拖拽框选（仅在 roiMode 下挂接手势，避免影响标注/标定点按）
-            // 用 highPriorityGesture：照片画布在 ScrollView 内，普通 .gesture 的拖拽
-            // 会被 ScrollView 滚动手势吞掉（真机表现为"框不上"）；高优先级手势可压过滚动。
+            // 焊缝区域拖拽框选：用 highPriorityGesture 确保拖拽始终优先于 ScrollView 滚动
+            // （真机上普通 .gesture 会被 ScrollView 滚动手势吞掉，表现为“框不上”）。
+            // 仅 roiMode 时挂载本手势（关闭时为 nil，不拦截标注/标定点按）。
             .highPriorityGesture(roiMode ? DragGesture(minimumDistance: 0)
-                .updating($roiDrag) { v, st, _ in
-                    if st == nil { st = (v.location, v.location) } else { st = (st!.0, v.location) }
+                .onChanged { v in
+                    if roiDragStart == nil { roiDragStart = v.location }
+                    roiDragCurrent = v.location
                 }
                 .onEnded { v in
-                    let n0 = CGPoint(x: min(max(0, (v.location.x - rect.minX) / rect.width), 1),
+                    guard let s = roiDragStart else { roiDragStart = nil; roiDragCurrent = nil; return }
+                    let s0 = CGPoint(x: min(max(0, (s.x - rect.minX) / rect.width), 1),
+                                     y: min(max(0, (s.y - rect.minY) / rect.height), 1))
+                    let n1 = CGPoint(x: min(max(0, (v.location.x - rect.minX) / rect.width), 1),
                                     y: min(max(0, (v.location.y - rect.minY) / rect.height), 1))
-                    let startPt = roiDrag?.0 ?? v.location
-                    let s0 = CGPoint(x: min(max(0, (startPt.x - rect.minX) / rect.width), 1),
-                                     y: min(max(0, (startPt.y - rect.minY) / rect.height), 1))
-                    let rr = CGRect(x: min(s0.x, n0.x), y: min(s0.y, n0.y),
-                                    width: abs(n0.x - s0.x), height: abs(n0.y - s0.y))
+                    let rr = CGRect(x: min(s0.x, n1.x), y: min(s0.y, n1.y),
+                                    width: abs(n1.x - s0.x), height: abs(n1.y - s0.y))
                     if rr.width > 0.02, rr.height > 0.02 { weldSeamROI = rr }
+                    roiDragStart = nil; roiDragCurrent = nil
                 } : nil)
         }
     }

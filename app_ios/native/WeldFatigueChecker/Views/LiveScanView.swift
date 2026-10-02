@@ -140,8 +140,11 @@ struct LiveScanView: View {
                     })
             }
 
-            // 顶部状态条
-            VStack {
+            // 顶部状态条 + 底部控制：用全屏 VStack + Spacer 把两者分别钉到顶部 / 底部，
+            // 避免默认居中 ZStack 把两个面板叠在屏幕中间（底部面板会盖住“退出”按钮、挤压框选按钮）。
+            // 该外层 VStack 无背景，中间 Spacer 区域透明，触摸可穿透到下层的框选手势。
+            VStack(spacing: 0) {
+                // 顶部状态条
                 HStack {
                     Button(action: { dismiss() }) {
                         Label("退出", systemImage: "xmark.circle.fill")
@@ -168,104 +171,106 @@ struct LiveScanView: View {
                 }
                 .padding(8)
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
-                Spacer()
-            }
 
-            // 底部控制
-            VStack(spacing: 10) {
                 Spacer()
-                if !captureMsg.isEmpty {
-                    Text(captureMsg)
-                        .font(.caption).foregroundStyle(.white)
-                        .padding(8)
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
-                }
 
-                // 焊缝区域闸门（ROI）
-                HStack {
-                    Button {
-                        if roiDrawing { roiDrawing = false; roiStart = nil; roiCurrent = nil }
-                        else { roiDrawing = true }
-                    } label: {
-                        Label(roiDrawing ? "框选中…拖拽" : "🎯 框选焊缝", systemImage: "viewfinder")
-                            .font(.subheadline)
-                            .padding(.horizontal, 8).padding(.vertical, 6)
-                            .background(roiDrawing ? Color.yellow : Theme.cyan.opacity(0.12),
-                                         in: RoundedRectangle(cornerRadius: 8))
-                            .foregroundStyle(roiDrawing ? .black : Theme.cyan)
+                // 底部控制
+                VStack(spacing: 10) {
+                    if !captureMsg.isEmpty {
+                        Text(captureMsg)
+                            .font(.caption).foregroundStyle(.white)
+                            .padding(8)
+                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
                     }
-                    if scanner.roi != nil {
+
+                    // 焊缝区域闸门（ROI）
+                    HStack {
                         Button {
-                            scanner.roi = nil
-                            store.vision.weldSeamROI = nil
+                            if roiDrawing { roiDrawing = false; roiStart = nil; roiCurrent = nil }
+                            else { roiDrawing = true }
                         } label: {
-                            Label("清除", systemImage: "xmark")
+                            Label(roiDrawing ? "框选中…拖拽" : "🎯 框选焊缝", systemImage: "viewfinder")
                                 .font(.subheadline)
                                 .padding(.horizontal, 8).padding(.vertical, 6)
-                                .background(Color.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
-                                .foregroundStyle(.red)
+                                .background(roiDrawing ? Color.yellow : Theme.cyan.opacity(0.12),
+                                             in: RoundedRectangle(cornerRadius: 8))
+                                .foregroundStyle(roiDrawing ? .black : Theme.cyan)
                         }
-                    }
-                    Spacer()
-                }
-                .padding(.horizontal, 8)
-
-                if scanner.roi == nil {
-                    Text("未框选焊缝区域：暂不检测任何缺陷（避免把非焊缝物体误报为余高）。点「🎯 框选焊缝」在预览上拖拽出焊缝范围。")
-                        .font(.caption2).foregroundStyle(.orange)
-                        .padding(6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
-                        .padding(.horizontal, 8)
-                }
-
-                // 引擎开关 + 实时缺陷数
-                HStack {
-                    Image(systemName: "brain").foregroundStyle(.purple)
-                    Toggle("AI 模型识别", isOn: $useMLModel)
-                        .font(.subheadline)
-                    Spacer()
-                    Text(MLDefectDetector.isModelAvailable ? "模型已加载" : "CV 回退")
-                        .font(.caption2)
-                        .foregroundStyle(MLDefectDetector.isModelAvailable ? .green : .secondary)
-                }
-                .padding(.horizontal, 8)
-                .onChange(of: useMLModel) { _, v in MLDefectDetector.useMLModel = v }
-
-                // 实时缺陷列表（类型 + 像素尺寸；mm 评级需在捕获后标定）
-                if !scanner.detections.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(Array(scanner.detections.enumerated()), id: \.offset) { i, d in
-                                let longPx = Int(defectMeasurePx(type: d.type, pixelSize: d.pixelSize))
-                                Text("#\(i+1) \(AnnotationMarker.shortLabel(d.type)) \(longPx)px")
-                                    .font(.caption2).foregroundStyle(.black)
-                                    .padding(.horizontal, 8).padding(.vertical, 4)
-                                    .background(Theme.defect.opacity(0.85), in: Capsule())
+                        if scanner.roi != nil {
+                            Button {
+                                scanner.roi = nil
+                                store.vision.weldSeamROI = nil
+                            } label: {
+                                Label("清除", systemImage: "xmark")
+                                    .font(.subheadline)
+                                    .padding(.horizontal, 8).padding(.vertical, 6)
+                                    .background(Color.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                                    .foregroundStyle(.red)
                             }
                         }
-                        .padding(.horizontal, 8)
+                        Spacer()
                     }
-                    .frame(height: 28)
-                }
+                    .padding(.horizontal, 8)
 
-                // 捕获按钮
-                Button(action: captureCurrent) {
-                    Label("捕获快照", systemImage: "camera.circle.fill")
-                        .font(.title2.bold())
-                        .frame(maxWidth: .infinity).padding(.vertical, 14)
-                        .background(LinearGradient(colors: [Theme.cyan, Theme.blue],
-                                                   startPoint: .leading, endPoint: .trailing),
-                                     in: Capsule())
-                        .foregroundStyle(.black)
-                        .shadow(color: Theme.cyan.opacity(0.4), radius: 10, y: 0)
-                }
+                    if scanner.roi == nil {
+                        Text("未框选焊缝区域：暂不检测任何缺陷（避免把非焊缝物体误报为余高）。点「🎯 框选焊缝」在预览上拖拽出焊缝范围。")
+                            .font(.caption2).foregroundStyle(.orange)
+                            .padding(6)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+                            .padding(.horizontal, 8)
+                    }
 
-                Text("捕获后回到「外观检查」，可用 📏 标定比例 或 LiDAR 点测得到真实 mm 并自动评级。")
-                    .font(.caption2).foregroundStyle(.white.opacity(0.8))
+                    // 引擎开关 + 实时缺陷数
+                    HStack {
+                        Image(systemName: "brain").foregroundStyle(.purple)
+                        Toggle("AI 模型识别", isOn: $useMLModel)
+                            .font(.subheadline)
+                        Spacer()
+                        Text(MLDefectDetector.isModelAvailable ? "模型已加载" : "CV 回退")
+                            .font(.caption2)
+                            .foregroundStyle(MLDefectDetector.isModelAvailable ? .green : .secondary)
+                    }
+                    .padding(.horizontal, 8)
+                    .onChange(of: useMLModel) { _, v in MLDefectDetector.useMLModel = v }
+
+                    // 实时缺陷列表（类型 + 像素尺寸；mm 评级需在捕获后标定）
+                    if !scanner.detections.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(Array(scanner.detections.enumerated()), id: \.offset) { i, d in
+                                    let longPx = Int(defectMeasurePx(type: d.type, pixelSize: d.pixelSize))
+                                    Text("#\(i+1) \(AnnotationMarker.shortLabel(d.type)) \(longPx)px")
+                                        .font(.caption2).foregroundStyle(.black)
+                                        .padding(.horizontal, 8).padding(.vertical, 4)
+                                        .background(Theme.defect.opacity(0.85), in: Capsule())
+                                }
+                            }
+                            .padding(.horizontal, 8)
+                        }
+                        .frame(height: 28)
+                    }
+
+                    // 捕获按钮
+                    Button(action: captureCurrent) {
+                        Label("捕获快照", systemImage: "camera.circle.fill")
+                            .font(.title2.bold())
+                            .frame(maxWidth: .infinity).padding(.vertical, 14)
+                            .background(LinearGradient(colors: [Theme.cyan, Theme.blue],
+                                                       startPoint: .leading, endPoint: .trailing),
+                                         in: Capsule())
+                            .foregroundStyle(.black)
+                            .shadow(color: Theme.cyan.opacity(0.4), radius: 10, y: 0)
+                    }
+
+                    Text("捕获后回到「外观检查」，可用 📏 标定比例 或 LiDAR 点测得到真实 mm 并自动评级。")
+                        .font(.caption2).foregroundStyle(.white.opacity(0.8))
+                }
+                .padding(12)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .padding(12)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
         }
         .statusBarHidden(true)
         .onAppear {
