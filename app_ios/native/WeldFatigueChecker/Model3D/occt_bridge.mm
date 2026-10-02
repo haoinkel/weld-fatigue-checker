@@ -52,6 +52,7 @@ const char* occt_last_error(void) { return g_occt_err; }
 #include <BRepBndLib.hxx>
 #include <BRepGProp.hxx>
 #include <GProp.hxx>
+#include <GProp_GProps.hxx>   // GProp_GProps 完整定义（BRepGProp.hxx 仅前向声明）
 #include <TopExp.hxx>
 #include <TopoDS_Solid.hxx>
 #include <TopoDS_Edge.hxx>
