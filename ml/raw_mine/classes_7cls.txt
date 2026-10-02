@@ -1,0 +1,7 @@
+porosity
+crack
+undercut
+overlap
+unfused
+solid_inclusion
+spatter

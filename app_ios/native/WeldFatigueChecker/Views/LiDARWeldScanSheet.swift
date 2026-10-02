@@ -17,6 +17,7 @@ import ARKit
 import RealityKit
 import AVFoundation
 import CoreVideo
+import simd
 
 // MARK: - 深度采样协调器（UIViewRepresentable 持有 ARView）
 
@@ -72,7 +73,8 @@ final class WeldScanCoordinator {
     }
 
     /// 把深度图统一转成"深度(米)"格式，返回其 depthDataMap（视差格式自动回退）
-    private static func depthMapMeters(_ depth: AVDepthData) -> CVPixelBuffer {
+    /// 改为 internal 以便 runScan 复用同一帧深度图做照片缺陷深度反投影（优化点 B）。
+    static func depthMapMeters(_ depth: AVDepthData) -> CVPixelBuffer {
         let depthMeters: AVDepthData
         if depth.depthDataType == kCVPixelFormatType_DisparityFloat32 ||
            depth.depthDataType == kCVPixelFormatType_DisparityFloat16 {
@@ -165,6 +167,30 @@ final class WeldScanCoordinator {
         // 横向焊缝→横截面是竖线→取中心纵列；纵向焊缝→横截面是横线→取中心横行
         return ori == .horizontal ? WeldScanCoordinator.sampleDepthColumn(depth)
                                    : WeldScanCoordinator.sampleDepthRow(depth)
+    }
+
+    // MARK: - 优化点 E：位姿漂移守卫
+    // 依据：Bondar et al., Measurement 2026 —— 手持抖动 >2cm 引入系统性尺度误差，需告警。
+    // 用法：用户点「📌 锁定对齐」记录参考位姿；扫描时比对当前 camera.transform 平移量，超 2cm 告警。
+    static let driftThresholdM: Double = 0.02   // 2 cm
+
+    /// 记录当前设备位姿为参考（用户确认对齐焊缝后调用；不调用则扫描时自动以起始帧为锚）
+    func setAnchor() {
+        anchorTransform = arView?.session.currentFrame?.camera.transform
+    }
+
+    /// 自参考位姿的平移量（米）；未锁定返回 nil
+    func driftFromAnchorMeters() -> Double? {
+        guard let a = anchorTransform,
+              let cur = arView?.session.currentFrame?.camera.transform else { return nil }
+        let d = cur.columns.3 - a.columns.3   // 平移向量差
+        return Double(length(d))
+    }
+
+    /// 是否超过漂移阈值
+    func isDriftExceeded() -> Bool {
+        guard let d = driftFromAnchorMeters() else { return false }
+        return d > Self.driftThresholdM
     }
 }
 
@@ -303,6 +329,8 @@ struct LiDARWeldScanSheet: View {
 
     private func runScan() {
         scanning = true
+        // 优化点 E：若用户未手动锁定对齐，则以此刻为锚（扫描为单帧抓取，瞬时漂移≈0）
+        if !anchored { WeldScanCoordinator.shared.setAnchor() }
         summary = "正在读取 LiDAR 深度剖面…"
         // 深度抓取需在主线程 AR 会话中，UI 反馈稍后给结果
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -338,6 +366,29 @@ struct LiDARWeldScanSheet: View {
                     let pxPerMm = Double(fx) / medianM
                     store.applyPhotoScale(pxPerMm)
                     autoScaledNote = "\n（已用 LiDAR 深度自动标定尺度：1 mm ≈ \(String(format: "%.1f", pxPerMm)) px，照片检测现可直接按 mm 评级）"
+
+                    // 优化点 B：用同一 AR 帧的彩色图 + 深度图 + 相机内参，直接对焊缝做缺陷识别，
+                    // 并深度反投影得到公制 mm（无需单独"点测/照片标定"）。失败自动跳过，不影响既有 LiDAR 候选。
+                    // 注：ARKit capturedImage 为相机朝向，与深度同坐标系，尺寸换算一致；框叠层显示 orientation 由 UI 另处校正。
+                    if let colorPB = frame.capturedImage as CVPixelBuffer?,
+                       let ui = UIImage.fromPixelBuffer(colorPB),
+                       let depthData = frame.capturedDepthData {
+                        let depthPB = WeldScanCoordinator.depthMapMeters(depthData)
+                        let intr = frame.camera.intrinsics
+                        let photoDets = MLDefectDetector.detect(in: ui, maxCount: 16,
+                                                               roi: store.vision.weldSeamROI,
+                                                               depth: depthPB, intrinsics: intr)
+                        for d in photoDets {
+                            let mm = d.metric.map { $0.primaryMm(type: d.type) }
+                            store.vision.imperfections.append(
+                                ImperfectionInput(type: d.type, sizeMm: mm, poreMm: nil,
+                                                  location: CGPoint(x: d.rect.midX, y: d.rect.midY),
+                                                  bbox: d.rect, pixelSize: d.pixelSize))
+                        }
+                        if !photoDets.isEmpty {
+                            autoScaledNote += "\n（LiDAR 融合：彩色帧缺陷已识别并深度反投影得 mm，共 \(photoDets.count) 项）"
+                        }
+                    }
                 }
             }
             scanning = false

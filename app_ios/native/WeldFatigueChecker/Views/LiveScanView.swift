@@ -93,13 +93,16 @@ struct LiveScanView: View {
                         let by = offY + d.rect.minY * ihP
                         let bw = d.rect.width * iwP
                         let bh = d.rect.height * ihP
-                        let longPx = Int(defectMeasurePx(type: d.type, pixelSize: d.pixelSize))
+                        // 优化点 B：若带深度反投影公制尺寸则显示 mm，否则显示像素（未标定）
+                        let metricText: String = d.metric.map {
+                            String(format: "%.1f mm", $0.primaryMm(type: d.type))
+                        } ?? "\(Int(defectMeasurePx(type: d.type, pixelSize: d.pixelSize)))px"
                         ZStack(alignment: .bottom) {
                             Rectangle()
                                 .stroke(Theme.defect, lineWidth: 2)
                                 .shadow(color: Theme.defect.opacity(0.8), radius: 4, y: 0)
                                 .frame(width: bw, height: bh)
-                            Text("\(AnnotationMarker.shortLabel(d.type))  \(longPx)px")
+                            Text("\(AnnotationMarker.shortLabel(d.type))  \(metricText)")
                                 .font(.system(size: 11, weight: .bold))
                                 .foregroundStyle(.black)
                                 .padding(.horizontal, 5).padding(.vertical, 2)

@@ -89,4 +89,92 @@ unfused            # 未融合
 3. 商用注意：CC0 / MIT / Public Domain 可商用；CC BY 需署名；论文集/NEU-DET 标"研究"用途，量产后自采数据替换。
 4. 数据量起底：每类 ≥50 张（总 200+），验证集 mAP@0.5 ≥ 0.85 再上机。
 
-**当前训练方案（已写入 `colab_train_weld.ipynb`）**：Roboflow 被墙，从 GitHub Release 直连 `steel-pipe-weld-defect-detection` 数据集；**训 5 类**（`porosity` 气孔 / `crack` 裂纹 / `undercut` 咬边 / `overlap` 焊瘤 / `unfused` 未融合）。笔记本自动下载→类别重映射（air-hole→porosity、crack→crack、bite-edge→undercut、overlap→overlap、unfused→unfused，兼容 YOLO/VOC 标注）→ `images/labels` 分离目录按文件名全局配对 → 8:2 划分 → 训 YOLOv8n → 导出 `.mlmodel`；**余高(excess_weld_metal) 由 App 内 LiDAR 几何计算、不进视觉模型**。用户无需任何 API Key，上传笔记本逐格运行即可。咬边仅 35 张、裂纹 119 张偏少，训练后重点看二者 recall。
+**当前训练方案（已写入 `colab_train_weld.ipynb`）**：Roboflow 被墙，从 GitHub Release 直连 `steel-pipe-weld-defect-detection` 数据集；**训 5 类**（`porosity` 气孔 / `crack` 裂纹 / `undercut` 咬边 / `overlap` 焊瘤 / `unfused` 未融合）。笔记本自动下载→类别重映射（air-hole→porosity、crack→crack、bite-edge→undercut、overlap→overlap、unfused→unfused，兼容 YOLO/VOC 标注）→ `images/labels` 分离目录按文件名全局配对 → 8:2 划分 → 训 YOLOv8n → 导出 `.mlmodel`；**余高(excess_weld_metal) 由 App 内 LiDAR 几何计算、不进视觉模型**。用户无需任何 API Key，上传笔记本逐格运行即可。咬边仅 35 张、裂纹 119 张偏少，训练后重点看二者 recall。另：仓库内 `ml/raw_mine/`（用户实拍现场图，已 5 类手标）已作为**源5 自动并入** `weld_train.py` —— 整库上传到 AI Studio（work/ 下即 `ml/raw_mine`）即生效，无需外部网络，重点补 undercut 与现场光照鲁棒性；其 md5 切分、少数类过采样与 CoreML 导出逻辑同其它源。验证集 mAP@0.5 ≥ 0.85（气孔）再下载 `WeldDefectModel.mlpackage`。
+
+---
+
+## 实跑命令与续训流程（多源合并 `weld_train.py`）
+
+> 本脚本把 **源1~4（即 120 轮当年的训练数据）+ 源5 raw_mine（自采 40 张）+ 以后新增数据** 合并成同一份 `dataset/data.yaml`，再训练。三条入口对应不同"权重起点 / 数据"组合。
+
+### ① 推荐：基于 120 权重 + 把 40 张自采 + 后续新增一并训练
+
+```bash
+# 把 120 轮留下的检查点（last.pt / best.pt / 备份的 weld_defect_5cls_last_backup.pt）上传到 AI Studio work/ 后：
+cd /home/aistudio/work
+python weld_train.py --init-from weld_defect_5cls_last_backup.pt
+```
+
+- `--init-from` **只借用权重**，训练数据强制以**本次脚本重新合并的数据集**为准（含 raw_mine + 之后新增），绝不会被旧 `args.yaml` 绑死；
+- 满足："120 + 40 + 后续补充"全部进训练，且都导出进 `WeldDefectModel.mlpackage`。
+
+### ② 加数据后续训（最常用，无需记路径）
+
+以后把新图丢进 `ml/raw_mine/images/` + 同名标签 `ml/raw_mine/labels/`（或新建 `raw_mine2/` 等源也行，加到 `weld_train.py` 的 `SOURCES`），**直接重跑**：
+
+```bash
+python weld_train.py        # 无 --fresh/--init-from/--resume 时，自动借上次 last.pt 权重，在含新数据的新数据集上从 0 轮训
+```
+
+- 默认"自动续训"分支 = 借上次 `last.pt` 权重 + **当前新合并数据集**，自动吃到新数据；
+- raw_mine 接口长期开放：继续往里丢图即并入，不用改任何代码。
+
+### ③ 同份数据中途被踢（仅原样续跑，勿加新数据时用）
+
+```bash
+python weld_train.py --resume     # 沿用旧 run 的 epochs/优化器/原 data 路径
+```
+
+- ⚠️ 若上次 run 是在 raw_mine 接入**之前**跑的，`--resume` 会**漏掉 raw_mine**——此时改用 ①②。
+
+### ④ 彻底重来（从 COCO 预训练，不继承任何权重）
+
+```bash
+python weld_train.py --fresh      # 清旧 runs，从 yolov8n.pt 全新训 120 轮；数据仍含全部源 + raw_mine
+```
+
+### ⏱ 省时：避免把 120 原始数据重训几小时
+
+`--init-from`（①）默认会在**合并全数据（含 120 原始数据）**上跑满 `TOTAL_EPOCHS=120` 轮，AI Studio 免费 GPU 上要几小时。若只想"把 40 张自采图快速并进模型、不想花几小时重训 120 原始数据"，用下面两个省时开关：
+
+```bash
+# 方案 A（省时且质量稳）：仍在全数据上，但只训 40 轮（起点已是 120 收敛点，足够融 40 新图 + 保旧知识）
+python weld_train.py --init-from weld_defect_5cls_last_backup.pt --epochs 40
+
+# 方案 B（最快，数十分钟级）：只用 raw_mine 40 张自采图、低学习率微调，完全不碰 120 原始数据
+python weld_train.py --init-from weld_defect_5cls_last_backup.pt --finetune --epochs 30
+```
+
+- `--epochs N`：覆盖训练轮数（默认 120）。任何入口（①/②/④）都可加；
+- `--finetune`：仅用 `raw_mine` 自采数据，自动清空旧 `dataset/` 避免残留源1~4，并把 `lr0` 降到 `1e-3` 保护 120 权重；
+- 质量权衡：方案 B 最快，但 40 图偏少、可能轻微过拟合到自采图背景，**建议配合 `--epochs 30`**；正式上线前若追求最优 map，仍走 ① 全量 120 轮（或方案 A 折中）。
+- 后续补数据：再往 `ml/raw_mine/` 丢图后，重跑 `--finetune --epochs 30` 即可增量微调，无需重训历史数据。
+
+### 🔁 持续学习：每次只训新增图，历史绝不重跑（推荐长期用法）
+
+`--finetune`（上段）只在 `raw_mine` 自采库上训，虽不碰源1~4，但 `raw_mine` 会随补图变大、旧自采图仍被反复训。若要做到"**历史数据（120 原始 + 已训自采）一次都不重跑**"，用持续学习模式：
+
+```bash
+# 第一次（无 manifest）：把 120 原始数据 + 当前自采一次性全训，建立基线（可加 --epochs 120 求最优）
+python weld_train.py --incremental --init-from weld_defect_5cls_last_backup.pt --epochs 120
+
+# 之后每次补图：只训【新增图】+ 抽 ≤200 张历史图回放防遗忘，权重自动继承上次 last.pt
+python weld_train.py --incremental
+```
+
+- 机制：维护 `dataset/.trained_manifest.txt` 记录已训图；本轮只把新增图进训练，并从历史图随机抽 ≤`REPLAY_CAP`(200) 张回放（防灾难性遗忘），源1~4 与已训自采**不再全量重跑**；
+- 权重链：`120.pt` → 首次 `--incremental` 全训 → `last.pt` → 后续 `--incremental` 只训新增 → `last.pt` …… 历史越积越多但**每张只训一次**；
+- 默认轮数降至 30（`--epochs` 可改），数十分钟级；
+- ⚠️ 想"彻底重排所有历史"：删 `dataset/.trained_manifest.txt` 再跑 `--incremental` 即回到全量一次性；不要把 `dataset/` 整个删了（会丢 manifest 导致无法识别新增）。
+
+### 断点备份（防 AI Studio 被杀）
+
+- 每个 epoch 末自动备份 `last.pt` → `/home/aistudio/work/weld_defect_5cls_last_backup.pt`；
+- 用 Notebook 侧边「下载文件」存本机兜底；若 `work/` 被清，重新上传该备份为 `runs/detect/weld_defect_5cls/weights/last.pt` 再跑即无缝续训；
+- 该备份文件本身也是 `--init-from` 的好来源（即"基于上次权重继续"）。
+
+### 你手上 120 权重在哪？
+
+- 若 AI Studio `work/` 没被清：`runs/detect/weld_defect_5cls*/weights/last.pt` 或 `best.pt` 直接拿来 `--init-from`；
+- 若当时按备份提示下载过：`weld_defect_5cls_last_backup.pt`；
+- **都没有**：只能走 ④ `--fresh`（数据仍含 120 当年的全部源 + raw_mine，只是权重不继承 120；或以后找回 120 的 .pt 再 `--init-from` 补训）。

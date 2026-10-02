@@ -167,6 +167,32 @@
         "C": {"value": 0.15, "ref": "t", "max_abs": 4.0, "formula": "t>3mm: h≤0.15t 且最大 4 mm；0.5~3mm: h≤0.15t+0.2 mm"},
         "D": {"value": 0.25, "ref": "t", "max_abs": 5.0, "formula": "t>3mm: h≤0.25t 且最大 5 mm；0.5~3mm: h≤0.25t+0.2 mm"}
       }
+    },
+    {
+      "type": "solid_inclusion",
+      "label": "固体夹渣",
+      "iso6520": "3001",
+      "fatigue_relevant": true,
+      "verified": false,
+      "verification_note": "占位扩展（优化点 D）：当前视觉模型为 5 类，尚未输出此类；限值须对照 ISO 5817:2023 表 1–5 官方原文核定后启用。以下为暂定值。",
+      "limits": {
+        "B": {"value": 0.1, "ref": "t", "max_abs": 1.0, "verified": false, "formula": "≤0.1t 且最大 1 mm（暂定，待核定）"},
+        "C": {"value": 0.15, "ref": "t", "max_abs": 2.0, "verified": false, "formula": "≤0.15t 且最大 2 mm（暂定，待核定）"},
+        "D": {"value": 0.2, "ref": "t", "max_abs": 3.0, "verified": false, "formula": "≤0.2t 且最大 3 mm（暂定，待核定）"}
+      }
+    },
+    {
+      "type": "spatter",
+      "label": "飞溅",
+      "iso6520": "5000",
+      "fatigue_relevant": false,
+      "verified": false,
+      "verification_note": "占位扩展（优化点 D）：ISO 5817 未单列飞溅评级，通常不作为质量等级验收项，仅作记录；当前模型亦未输出。",
+      "limits": {
+        "B": {"permitted": true, "verified": false, "formula": "ISO 5817 未单列飞溅评级；仅记录"},
+        "C": {"permitted": true, "verified": false, "formula": "仅记录"},
+        "D": {"permitted": true, "verified": false, "formula": "仅记录"}
+      }
     }
   ],
   "verification_checklist": [

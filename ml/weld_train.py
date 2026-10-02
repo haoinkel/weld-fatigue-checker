@@ -10,6 +10,8 @@
 #   源3 raw_lohi/   <- LoHi-WELD【MAG 聚焦首选补充源】(IEEE Access 2024, GMAW/MAG 机器人焊道可见光,
 #                      3022张, 4类 pores/deposits/discontinuities/stains -> porosity/overlap/unfused/丢弃; 免费可商用, 需引用)
 #   源4 raw_kunkun/ <- kunkun-vhmx2/weld（Roboflow, CC BY 4.0, 2200图, 精细5类: Crack/Lack Of Fusion/...）
+#   源5 raw_mine/   <- 用户实拍焊缝现场图，已按 5 类顺序手标（classes.txt 序=目标序），随仓库上传即启用，
+#                     无需任何外部网络；作为"自采真实域"补强，重点补 undercut/现场光照鲁棒性。
 #
 # ⚠️ CN 网络现实（2026-09-26 核实）: 仅 GitHub 可达；Roboflow / Google Drive / HuggingFace 全被墙。
 #   - Roboflow(源2/源4) 国内打不开, 下载端点 403 -> 无代理/VPN 不可下; 脚本保留支持, 有代理即生效。
@@ -24,8 +26,14 @@
 #   各源缺失即跳过, 保证单源也能训练。
 
 import os
-os.chdir('/home/aistudio/work')  # 保证产物落 work/ (环境重置不丢)
-os.makedirs('/home/aistudio/work', exist_ok=True)
+# 工作目录保持调用方所在目录（AI Studio / 魔搭 ModelScope / Kaggle / Jupyter 通用），
+# 不再硬编码 AI Studio 路径：检测到 /home/aistudio/work 才切过去，否则沿用当前目录。
+_WS = '/home/aistudio/work'
+if os.path.isdir(_WS):
+    os.chdir(_WS)
+    os.makedirs(_WS, exist_ok=True)
+else:
+    print(f'[提示] 未检测到 AI Studio 工作目录 {_WS}，沿用当前目录: {os.getcwd()}')
 print('工作目录:', os.getcwd())
 
 
@@ -111,6 +119,12 @@ REMAP = {
     'spatter': None, 'spatters': None,
     'welding line': None, 'welding_line': None,
     'bad welding': None, 'good welding': None, 'bad weld': None, 'good weld': None,
+    # —— 源5 自采现场 raw_mine（用户实拍焊缝图, 已按 5 类顺序手标, 标签序号即目标序号）——
+    'porosity': 'porosity',
+    'crack':    'crack',
+    'undercut': 'undercut',
+    'overlap':  'overlap',
+    'unfused':  'unfused',
 }
 
 # 各数据源的兜底类别顺序（数据源自带 data.yaml/classes.txt 不存在时按此映射索引 0..n）
@@ -120,6 +134,7 @@ SOURCE_NAMES = {
     'lohi':          ['pores', 'deposits', 'discontinuities', 'stains'],
     'kunkun':        ['Crack', 'Lack Of Fusion', 'Lack Of Penetration', 'Porosity', 'Slag Inclusion'],
     'synth':         TARGET_CLASSES,   # 合成粘贴增强产物（raw_synth/），标签直接用目标类序号 0-4
+    'raw_mine':      TARGET_CLASSES,   # 源5 自采现场图：classes.txt 序=目标序，标签直接用目标类序号 0-4
 }
 print('目标类别:', TARGET_CLASSES)
 print('REMAP 命中目标类数:', sum(1 for v in REMAP.values() if v))
@@ -130,36 +145,44 @@ print('REMAP 命中目标类数:', sum(1 for v in REMAP.values() if v))
 # ===== 3. 下载源1（huangyebiaoke, GitHub Release, ghproxy 回退）=====
 import os, sys, zipfile, subprocess
 
-URL = "https://github.com/huangyebiaoke/steel-pipe-weld-defect-detection/releases/download/1.0/steel-tube-dataset-all.zip"
-# AI Studio 等 CN 云环境直连 github.com 会超时，依次尝试常见 ghproxy 镜像回退。
-MIRRORS = [
-    'https://ghproxy.net/' + URL,
-    'https://mirror.ghproxy.com/' + URL,
-    'https://gh.api.99988866.xyz/' + URL,
-    URL,
-]
-os.makedirs('raw', exist_ok=True)
-zip_path = 'raw/steel-tube-dataset-all.zip'
+# 早期解析 --finetune（完整解析见下方 line 336）：finetune 模式仅用自采 raw_mine，
+# 跳过源1~4 下载/解压（避免无代理环境下拉 810MB 数据集卡死，也契合"不重训历史"诉求）。
+_FINETUNE_EARLY = '--finetune' in sys.argv
 
-if not os.path.exists(zip_path) or os.path.getsize(zip_path) < 1_000_000:
-    for u in MIRRORS:
-        print('下载数据集:', u)
-        r = subprocess.run(['curl', '-L', '--max-time', '180', '-o', zip_path, u],
-                           capture_output=True, text=True)
-        if r.returncode == 0 and os.path.getsize(zip_path) > 1_000_000:
-            print('下载完成:', os.path.getsize(zip_path), 'bytes')
-            break
-        else:
-            print('该镜像失败:', (r.stderr or '')[-150:])
-    else:
-        raise SystemExit('所有镜像均下载失败，请手动下载数据集放到 ' + zip_path)
+if _FINETUNE_EARLY:
+    print('[finetune] 跳过源1~4 下载/解压，仅用 raw_mine 自采数据训练')
 else:
-    print('已存在，跳过下载')
+    URL = "https://github.com/huangyebiaoke/steel-pipe-weld-defect-detection/releases/download/1.0/steel-tube-dataset-all.zip"
+    # AI Studio 等 CN 云环境直连 github.com 会超时，依次尝试常见 ghproxy 镜像回退。
+    MIRRORS = [
+        'https://ghproxy.net/' + URL,
+        'https://mirror.ghproxy.com/' + URL,
+        'https://gh.api.99988866.xyz/' + URL,
+        URL,
+    ]
+    os.makedirs('raw', exist_ok=True)
+    zip_path = 'raw/steel-tube-dataset-all.zip'
 
-print('解压...')
-with zipfile.ZipFile(zip_path) as z:
-    z.extractall('raw')
-print('解压完成')
+    if not os.path.exists(zip_path) or os.path.getsize(zip_path) < 1_000_000:
+        for u in MIRRORS:
+            print('下载数据集:', u)
+            r = subprocess.run(['curl', '-L', '--max-time', '180', '-o', zip_path, u],
+                               capture_output=True, text=True)
+            if r.returncode == 0 and os.path.getsize(zip_path) > 1_000_000:
+                print('下载完成:', os.path.getsize(zip_path), 'bytes')
+                break
+            else:
+                print('该镜像失败:', (r.stderr or '')[-150:])
+        else:
+            raise SystemExit('所有镜像均下载失败，请手动下载数据集放到 ' + zip_path)
+    else:
+        print('已存在，跳过下载')
+
+    print('解压...')
+    with zipfile.ZipFile(zip_path) as z:
+        z.extractall('raw')
+    print('解压完成')
+
 print('提示: 源2 JIAN SONG 解压到 raw_jian/; 源3 LoHi-WELD 放到 raw_lohi/ (或见步骤3.5用 gdown 在云端拉); 源4 kunkun 解压到 raw_kunkun/（缺失则自动跳过）')
 
 # ===== 3.5 可选：在 AI Studio 云端用 gdown 拉取 LoHi-WELD（MAG 聚焦首选源；本地/沙箱被墙时绕道）=====
@@ -314,15 +337,45 @@ SOURCES = [
     {'root': 'raw_jian',   'key': 'jian_song',     'needs': None},   # 手动上传 Roboflow 导出
     {'root': 'raw_lohi',   'key': 'lohi',          'needs': 'json'}, # 手动上传（Google Drive 易墙）
     {'root': 'raw_kunkun', 'key': 'kunkun',        'needs': None},   # 手动上传 Roboflow 导出（CC BY 4.0, 精细类）
+    {'root': 'raw_mine',   'key': 'raw_mine',      'needs': None},   # 源5 自采现场图（随仓库，自动启用）
 ]
+
+# ===== 省时微调模式（--finetune）：仅用自采 raw_mine，不重训 120 原始数据 =====
+FINETUNE = '--finetune' in sys.argv
+if FINETUNE:
+    print('[finetune] 启用：仅用 raw_mine 自采数据，不重训源1~4历史数据（AI Studio 数十分钟级）')
+    if '--incremental' not in sys.argv:
+        shutil.rmtree('dataset', ignore_errors=True)   # 清空旧合并集，避免残留源1~4图片（incremental 时保留 manifest 不删）
+_ACTIVE_SOURCES = [s for s in SOURCES if (not FINETUNE or s['key'] == 'raw_mine')]
+
+# ===== 持续学习模式（--incremental）：只训新增图，历史不重跑 =====
+# 解决"每次加数据都把 120 原始数据 + 之前自采全部重训"的算力浪费。
+# 机制：维护 dataset/.trained_manifest.txt 记录已训图；本轮只把【新增图】进训练，
+#       并从【历史图】随机抽一小批(REPLAY_CAP)做回放防灾难性遗忘；权重起点用上次 last.pt。
+INCREMENTAL = '--incremental' in sys.argv
+REPLAY_CAP = 200
+new_bases, replay_pool = [], []
+if INCREMENTAL:
+    import random
+    _MANIFEST = 'dataset/.trained_manifest.txt'
+    trained_manifest = set()
+    if os.path.isfile(_MANIFEST):
+        with open(_MANIFEST, encoding='utf-8') as _mf:
+            trained_manifest = set(l.strip() for l in _mf if l.strip())
+        print(f'[incremental] 已训历史图 {len(trained_manifest)} 张（本轮不重跑，仅回放防遗忘）')
+    else:
+        print('[incremental] 首次运行无 manifest：本轮将把全部图当新增全量训一次（仅此一次），之后增量。')
 
 for sp in ('train', 'val'):
     os.makedirs(f'dataset/images/{sp}', exist_ok=True)
     os.makedirs(f'dataset/labels/{sp}', exist_ok=True)
 kept = {c: 0 for c in TARGET_CLASSES}
 
-for src in SOURCES:
+for src in _ACTIVE_SOURCES:
     root = src['root']
+    # 兼容两种上传布局：用户把数据集放 work/ 根（raw_mine），或整库上传为 work/（ml/raw_mine）
+    if not os.path.isdir(root) and os.path.isdir('ml/' + root):
+        root = 'ml/' + root
     if not os.path.isdir(root):
         print(f'[跳过] 数据源 {src["key"]} 目录 {root} 不存在（如需启用请上传数据集到此目录）')
         continue
@@ -358,6 +411,9 @@ for src in SOURCES:
                 boxes = parse_voc(ann)
         if not boxes:
             continue
+        if INCREMENTAL and base in trained_manifest:
+            replay_pool.append((base, ip, boxes))   # 历史图：仅进回放池，不重跑全量
+            continue
         f = os.path.basename(ip)
         split = 'val' if (int(hashlib.md5(base.encode()).hexdigest(), 16) % 5 == 0) else 'train'
         dst_img = os.path.join('dataset/images', split, f)
@@ -370,6 +426,8 @@ for src in SOURCES:
         cnt += 1
         for b in boxes:
             kept[TARGET_CLASSES[int(b.split()[0])]] += 1
+        if INCREMENTAL:
+            new_bases.append(base)
     print(f'[合并] {src["key"]}: 保留图-标对 {cnt}')
 
 print('各类框数:', kept)
@@ -382,6 +440,28 @@ with open('dataset/data.yaml', 'w') as f:
         'names': TARGET_CLASSES,
     }, f)
 print('已生成 dataset/data.yaml ->', TARGET_CLASSES)
+
+if INCREMENTAL:
+    if not new_bases:
+        print('[incremental] 未检测到新增数据（所有源均无新图），无需训练。退出。')
+        raise SystemExit(0)
+    random.shuffle(replay_pool)
+    replay = replay_pool[:REPLAY_CAP]
+    for (base, ip, boxes) in replay:
+        f = os.path.basename(ip)
+        dst_img = os.path.join('dataset/images/train', f)
+        if os.path.exists(dst_img):
+            f = f'replay_{f}'; dst_img = os.path.join('dataset/images/train', f)
+        shutil.copy(ip, dst_img)
+        with open(os.path.join('dataset/labels/train', os.path.splitext(f)[0] + '.txt'), 'w') as wf:
+            wf.write('\n'.join(boxes) + '\n')
+        for b in boxes:
+            kept[TARGET_CLASSES[int(b.split()[0])]] += 1
+    _MANIFEST = 'dataset/.trained_manifest.txt'
+    with open(_MANIFEST, 'w', encoding='utf-8') as _mf:
+        _mf.write('\n'.join(sorted(trained_manifest | set(new_bases))) + '\n')
+    print(f'[incremental] 新增 {len(new_bases)} 张进训练；回放 {len(replay)} 张历史图防遗忘；历史共 {len(trained_manifest)} 张不重跑')
+    print(f'[incremental] 已更新 manifest -> {_MANIFEST}')
 
 # 少数类过采样（仅 train, 路线A核心补强）：复制 crack/undercut 训练图，
 # 使其达到「中位类数量 × OVER_SAMPLE_MULT」，缓解样本不均衡。
@@ -438,10 +518,18 @@ for c in MINORITY:
 from ultralytics import YOLO
 import glob as _glob
 
-# ===== 断点续训支持（解决「AI Studio 免费环境回收/杀进程 → 长训练跑不到头」）=====
+# ===== 续训 / 继续训练支持（解决「AI Studio 被杀」+「加数据后想接着训」两类需求）=====
 # 关键事实：AI Studio 被杀的只是 Python 进程，/home/aistudio/work 目录（含 runs/ 下的
 # last.pt 与训练状态文件）在环境重置后仍存活（09-26→09-27 实测 last.pt 仍在）。
-# 因此：每次被踢，重新跑本脚本即可自动从上一个 last.pt 续训，epoch 累加直到 TOTAL_EPOCHS。
+#
+# ⚠️ 三条入口（务必看清区别，直接关系到"raw_mine 40 张 + 以后新增数据"能否进训练）：
+#   ① --init-from <ckpt.pt>（【推荐】）：用指定检查点当【权重初始化】，但强制在【本脚本本次
+#      重新合并的数据集】（含 raw_mine 及以后新增数据）上从 0 轮训到 TOTAL_EPOCHS。
+#      -> 满足「基于 120 权重 + 把 40 张自采 + 后续补充数据全部并进训练」，且不被旧 data 路径绑架。
+#   ② 默认自动续训（无 --fresh/--init-from/--resume 且检测到 last.pt）：同样【借 last.pt 权重，
+#      但在当前新合并数据集上从 0 轮训】。用于「加数据后重跑即自动吃到新数据」，无需手动指定。
+#   ③ --resume（仅同份数据中途被踢的原样续跑）：沿用旧 run 的 args.yaml（含旧 data 路径）。
+#      ⚠️ 若上次 run 是在 raw_mine 接入【之前】跑的，--resume 会【漏掉 raw_mine】——此时务必用 ①②。
 # 只有 train() 真正跑满 TOTAL_EPOCHS 正常返回后，下方步骤6/7 的 val + export 才会执行。
 TRAIN_NAME = 'weld_defect_5cls'
 TOTAL_EPOCHS = 120  # 路线A: 小样本需更多轮次收敛
@@ -452,47 +540,149 @@ def _find_last_pt():
     return cands[-1] if cands else None
 
 
-# --fresh / --fresh-start：清掉旧训练目录，强制从 yolov8n.pt 全新跑 120 轮增强版，
-# 用本脚本显式锁定的增强参数（不依赖任何历史保存的 args.yaml），保证产物 100% 确定。
-FRESH = '--fresh' in sys.argv or '--fresh-start' in sys.argv
+# ===== 自动备份断点（加固「被踢后重跑」链路，针对此前 120 轮被回收中断的坑）=====
+# 背景：AI Studio 免费环境会杀进程；work/ 通常存活，但极端情况下可能被清。
+# 为解决「被踢且无险可守 → 只能从头跑 120 轮」，每个 epoch 末把 last.pt 复制一份到
+# 固定备份路径，用户可随时从 Notebook 侧边「下载文件」存到本机兜底；万一 work/ 被清，
+# 重新上传该备份为 runs/detect/<name>/weights/last.pt 再跑本脚本即无缝续训。
+import shutil as _shutil
 
-last_pt = None if FRESH else _find_last_pt()
+BACKUP_PT = os.path.join(os.getcwd(), 'weld_defect_5cls_last_backup.pt')  # 动态指向当前工作目录（魔搭/AI Studio 通用）
+
+
+def _on_train_epoch_end(trainer):
+    lp = _find_last_pt()
+    if lp and os.path.isfile(lp):
+        try:
+            _shutil.copy(lp, BACKUP_PT)
+            ep = getattr(trainer, 'epoch', None)
+            if ep is not None and ep % 10 == 0:
+                print(f'[备份] epoch {ep} 末已备份 last.pt -> {BACKUP_PT}')
+        except Exception:
+            pass
+
+
+def _attach_backup(model):
+    try:
+        model.add_callback('on_train_epoch_end', _on_train_epoch_end)
+    except Exception:
+        pass
+    return model
+
+
+# ===== 训练入口选择（见上方说明：--init-from 推荐 / 默认自动续训权重 / --resume 同run / --fresh 全新）=====
+def _get_arg(name):
+    """从 sys.argv 取 --key <value> 的值（无则 None）。"""
+    try:
+        i = sys.argv.index(name)
+        if i + 1 < len(sys.argv):
+            return sys.argv[i + 1]
+    except ValueError:
+        pass
+    return None
+
+INIT_FROM = _get_arg('--init-from')                       # 推荐：权重起点 = 指定检查点
+FRESH = '--fresh' in sys.argv or '--fresh-start' in sys.argv
+RESUME = '--resume' in sys.argv                          # 仅同份数据中途被踢的原样续跑
+
+last_pt = _find_last_pt()
+
 if FRESH:
     for d in _glob.glob(f'runs/detect/{TRAIN_NAME}*'):
         print('[--fresh] 删除旧训练目录:', d)
         shutil.rmtree(d, ignore_errors=True)
-if last_pt:
-    print('[续训] 检测到', last_pt, '-> 从上次中断处继续训练到', TOTAL_EPOCHS, '轮')
-    print('        （被踢后重新运行本脚本即可自动续训，无需任何额外操作）')
-    model = YOLO(last_pt)
+    last_pt = None
+
+# 训练超参（集中定义，三条入口共用，保证产物参数一致）
+TRAIN_KWARGS = dict(
+    data='dataset/data.yaml',        # 永远以本脚本【本次新合并】的数据集为准（含 raw_mine + 新增数据）
+    task='detect',
+    epochs=TOTAL_EPOCHS, imgsz=640, batch=16,
+    name=TRAIN_NAME,
+    patience=30,          # 更宽松早停, 给少数类(crack/undercut)更多学习机会
+    augment=True,         # 小数据集防过拟合
+    hsv_h=0.015, hsv_s=0.9, hsv_v=0.5,  # 提升色彩抖动, 增强对光照/焊渣色变鲁棒性
+    fliplr=0.5, mosaic=1.0,
+    mixup=0.1,            # 轻度 mixup, 提升泛化、抑制过拟合
+    degrees=5.0, scale=0.5, shear=1.0, perspective=0.0005,  # 几何增广: 焊缝朝向/尺度多样
+    copy_paste=0.45,      # 路线A核心: 少数类(crack/undercut)最有效增广, 0.2->0.45 更激进
+    seed=42,
+    amp=False,            # 禁用 AMP 自检(fp16 校验需从 GitHub 下载 yolo26n.pt；CN 云环境拉不动，关掉后自动用 FP32 训练，对 yolov8n 无影响)
+)
+
+# —— 省时入口：--epochs N 覆盖轮数；--finetune 降学习率保护 120 权重 ——
+_epochs_override = _get_arg('--epochs')
+if _epochs_override:
     try:
-        results = model.train(resume=True)  # resume 沿用上次保存的 epochs/优化器/调度器状态
+        TRAIN_KWARGS['epochs'] = int(_epochs_override)
+        print(f'[epochs] 覆盖训练轮数 = {TRAIN_KWARGS["epochs"]}')
+    except ValueError:
+        print(f'[epochs] 无法解析 {_epochs_override}，沿用默认 {TOTAL_EPOCHS}')
+if FINETUNE:
+    TRAIN_KWARGS['lr0'] = 1e-3   # 低学习率，避免摧毁 120 预训练特征
+    print(f'[finetune] 学习率 lr0 降至 {TRAIN_KWARGS["lr0"]}（保护 120 权重）')
+if INCREMENTAL and not _epochs_override:
+    TRAIN_KWARGS['epochs'] = 30
+    print(f'[incremental] 默认训练轮数降至 {TRAIN_KWARGS["epochs"]}（只训新增+回放，无需全量120轮）')
+
+if INIT_FROM:
+    # 【推荐】借 120（或任意）检查点权重，但在【含 raw_mine + 新增数据的当前数据集】上从 0 轮训
+    print(f'[init-from] 权重起点 = {INIT_FROM}')
+    if FINETUNE:
+        print(f'           -> 【仅 raw_mine 自采数据】微调，不重训源1~4，训到 {TRAIN_KWARGS["epochs"]} 轮（lr0={TRAIN_KWARGS.get("lr0")}）')
+        print(f'           （最快：基于 120 权重 + 40 张自采，数十分钟级；后续补数据可重跑 --finetune 或转全量）')
+    else:
+        print(f'           -> 在【本次新合并数据集】(含源1~4 + raw_mine 40张 + 以后新增数据) 上训到 {TRAIN_KWARGS["epochs"]} 轮')
+        print(f'           （满足：基于 120 权重 + 40 张自采 + 后续补充数据全部并进训练）')
+    model = YOLO(INIT_FROM)
+    _attach_backup(model)
+    try:
+        results = model.train(**TRAIN_KWARGS)
     except KeyboardInterrupt:
-        print('[中断] 训练被手动终止。重新运行本脚本即可自动续训。')
+        print('[中断] 训练被手动终止。重跑同一条 --init-from 命令即可在最新数据上续训。')
+        raise SystemExit(0)
+elif RESUME and last_pt:
+    # 仅同份数据中途被踢：原样续跑（沿用旧 run 的 epochs/优化器/数据路径）
+    print('[resume] 沿用', last_pt, '及其原 run 数据集/优化器状态，从断点继续（同一份数据用）')
+    model = YOLO(last_pt)
+    _attach_backup(model)
+    try:
+        results = model.train(resume=True)
+    except KeyboardInterrupt:
+        print('[中断] 训练被手动终止。重新运行本脚本即可续训。')
+        raise SystemExit(0)
+elif last_pt:
+    # 默认自动续训：【借 last.pt 权重】，但在【当前新合并数据集】上从 0 轮训（避免 resume 漏掉 raw_mine/新数据）
+    print(f'[续训-权重] 检测到 {last_pt} 作为权重初始化')
+    if FINETUNE:
+        print(f'           -> 【仅 raw_mine 自采数据】微调，不重训源1~4，训到 {TRAIN_KWARGS["epochs"]} 轮（lr0={TRAIN_KWARGS.get("lr0")}）')
+    else:
+        print(f'           -> 在【本次新合并数据集】(含 raw_mine 40张 + 以后新增数据) 上训到 {TRAIN_KWARGS["epochs"]} 轮')
+        print(f'           （加数据后重跑即走此分支，自动吃到新数据，无需 --init-from）')
+    model = YOLO(last_pt)
+    _attach_backup(model)
+    try:
+        results = model.train(**TRAIN_KWARGS)
+    except KeyboardInterrupt:
+        print('[中断] 训练被手动终止。重新运行本脚本即可在最新数据上续训。')
         raise SystemExit(0)
 else:
-    print('[新训] 未找到历史权重，从 yolov8n.pt COCO 预训练起点开始')
+    # 无历史权重：从 yolov8n.pt COCO 预训练起点全新训（数据仍含全部源 + raw_mine）
+    print('[新训] 未找到历史权重，从 yolov8n.pt COCO 预训练起点开始（数据集已含 raw_mine + 全部源）')
     model = YOLO('yolov8n.pt')   # 自动从 Ultralytics 服务器下载 COCO 预训练权重
-    results = model.train(
-        data='dataset/data.yaml',
-        task='detect',
-        epochs=TOTAL_EPOCHS, imgsz=640, batch=16,
-        name=TRAIN_NAME,
-        patience=30,          # 更宽松早停, 给少数类(crack/undercut)更多学习机会
-        augment=True,         # 小数据集防过拟合
-        hsv_h=0.015, hsv_s=0.9, hsv_v=0.5,  # 提升色彩抖动, 增强对光照/焊渣色变鲁棒性
-        fliplr=0.5, mosaic=1.0,
-        mixup=0.1,            # 轻度 mixup, 提升泛化、抑制过拟合
-        degrees=5.0, scale=0.5, shear=1.0, perspective=0.0005,  # 几何增广: 焊缝朝向/尺度多样
-        copy_paste=0.45,      # 路线A核心: 少数类(crack/undercut)最有效增广, 0.2->0.45 更激进
-        seed=42,
-    )
+    _attach_backup(model)
+    try:
+        results = model.train(**TRAIN_KWARGS)
+    except KeyboardInterrupt:
+        print('[中断] 训练被手动终止。')
+        raise SystemExit(0)
 print('训练完成')
 
-# 安全提示：每次会话结束前，建议把最新断点下载到本地兜底（防极端情况下目录被清）：
-#   !cp runs/detect/%s*/weights/last.pt /home/aistudio/work/last_backup.pt
-#   （用 Notebook 侧边「下载文件」把 last_backup.pt 存到本机；下次被清就重新上传再续训）
-print('[提醒] 若担心环境清空 work/，请现在下载 runs/detect/%s*/weights/last.pt 到本地兜底' % TRAIN_NAME)
+# 安全提示：本脚本已在每个 epoch 末自动把 last.pt 备份到：
+#   /home/aistudio/work/weld_defect_5cls_last_backup.pt
+# 用 Notebook 侧边「下载文件」把它存到本机兜底；万一 work/ 被清，
+# 重新上传该备份为 runs/detect/<name>/weights/last.pt 再跑本脚本即无缝续训。
+print('[提醒] 断点已自动备份至', BACKUP_PT, '（也可手动下载到本机：侧边「下载文件」）')
 
 
 # ============ 步骤 6/7 ============

@@ -113,7 +113,15 @@ enum KnowledgeBank {
         ImperfectionSpec(type: "linear_misalignment", label: "错边", fatigueRelevant: true,
             limits: ["B": IsoLimit(value: 0.1, ref: "t", maxAbs: 1.0),
                      "C": IsoLimit(value: 0.15, ref: "t", maxAbs: 2.0),
-                     "D": IsoLimit(value: 0.2, ref: "t", maxAbs: 3.0)])
+                     "D": IsoLimit(value: 0.2, ref: "t", maxAbs: 3.0)]),
+        // —— 以下两项为「优化点 D：缺陷类别扩展」占位（当前视觉模型为 5 类，尚未输出这两类）——
+        // 限值暂定，须对照 ISO 5817:2023 表 1–5 官方原文核定后再用于工程判定。
+        ImperfectionSpec(type: "solid_inclusion", label: "固体夹渣", fatigueRelevant: true,
+            limits: ["B": IsoLimit(value: 0.1, ref: "t", maxAbs: 1.0),
+                     "C": IsoLimit(value: 0.15, ref: "t", maxAbs: 2.0),
+                     "D": IsoLimit(value: 0.2, ref: "t", maxAbs: 3.0)]),
+        ImperfectionSpec(type: "spatter", label: "飞溅", fatigueRelevant: false,
+            limits: ["B": IsoLimit(permitted: true), "C": IsoLimit(permitted: true), "D": IsoLimit(permitted: true)])
     ]
 
     /// 查找细节类别；对旧版占位 ID 做兼容映射（避免数据升级后引用失效）

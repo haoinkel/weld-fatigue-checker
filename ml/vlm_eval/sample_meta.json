@@ -1,0 +1,9 @@
+{
+  "standard": "ISO 5817:2023",
+  "plateThicknessMm": 12,
+  "weldContext": "角焊缝",
+  "defects": [
+    {"type": "undercut", "sizeMm": 0.8, "grade": "C", "accepted": true},
+    {"type": "porosity", "sizeMm": 1.2, "grade": "C", "accepted": false}
+  ]
+}

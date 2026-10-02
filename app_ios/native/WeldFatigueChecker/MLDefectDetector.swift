@@ -32,6 +32,8 @@ import Foundation
 import UIKit
 import Vision
 import CoreML
+import CoreVideo
+import simd
 
 struct MLDefectDetector {
     /// 是否优先使用 Core ML 模型（false 时强制走 CV 规则）。可在 UI 暴露开关。
@@ -60,6 +62,12 @@ struct MLDefectDetector {
     // 视觉模型训练的 5 类（顺序必须与训练 data.yaml names 完全一致，Ultralytics 按此索引）。
     // TARGET_CLASSES = ['porosity','crack','undercut','overlap','unfused']
     // confidence 向量 argmax 索引 i 即对应 classNames[i]。
+    // 当前部署模型为 5 类（顺序须与训练 data.yaml names 严格一致）。
+    // 扩展类（重训目标，当前未启用）：在 5 类后追加 solid_inclusion(夹渣)、spatter(飞溅) → 7 类。
+    // 重训时必须同步更新：ml/yolov8n_weld_7cls.yaml(nc:7) + classes_7cls.txt + data yaml names，
+    // 且本 classNames / labelMap 顺序必须与新模型导出顺序严格一致，否则 argmax 错位。
+    // TODO(retrain): 升级到 7 类时取消下方注释并调整顺序
+    // private static let classNames = ["porosity","crack","undercut","overlap","unfused","solid_inclusion","spatter"]
     private static let classNames = ["porosity", "crack", "undercut", "overlap", "unfused"]
 
     // YOLO 类名 / 同义名 → App 内部 type（下游 ISO5817Grader 直接用 type 评级）。
@@ -82,16 +90,24 @@ struct MLDefectDetector {
     /// 统一检测入口。模型可用且开启时走 ML，否则（或推理失败）回退 CV 规则。
     /// roi：焊缝区域（归一化 0..1）；传入时只保留中心落在 roi 内的缺陷，
     ///      区域外不报（避免非焊缝物体误报）。nil 表示不限制（调用方负责闸门逻辑）。
-    static func detect(in image: UIImage, maxCount: Int = 16, roi: CGRect? = nil) -> [DetectedDefect] {
+    static func detect(in image: UIImage, maxCount: Int = 16, roi: CGRect? = nil,
+                       depth: CVPixelBuffer? = nil, intrinsics: matrix_float3x3? = nil) -> [DetectedDefect] {
         let applyROI: ([DetectedDefect]) -> [DetectedDefect] = { list in
             guard let r = roi else { return list }
             return list.filter { r.contains(CGPoint(x: $0.rect.midX, y: $0.rect.midY)) }
         }
+        // 优化点 B：若提供 ARKit 深度图 + 相机内参，逐缺陷做针孔反投影得公制 mm；
+        //          否则保留原样（上层用 pxPerMm 标定或"未标定"显示）。
+        let attachMetric: (DetectedDefect) -> DetectedDefect = { d in
+            guard let dm = depth, let k = intrinsics,
+                  let m = MetricSizer.fromDepth(rect: d.rect, depth: dm, intrinsics: k) else { return d }
+            return DetectedDefect(rect: d.rect, type: d.type, pixelSize: d.pixelSize, metric: m)
+        }
         if useMLModel, let url = compiledModelURL,
            let dets = try? runModel(at: url, image: image, maxCount: maxCount) {
-            return applyROI(dets)
+            return applyROI(dets).map(attachMetric)
         }
-        return applyROI(PhotoDefectDetector.detect(in: image, maxCount: maxCount))
+        return applyROI(PhotoDefectDetector.detect(in: image, maxCount: maxCount)).map(attachMetric)
     }
 
     /// 当前生效的引擎描述（用于自动标注提示文案）
@@ -115,7 +131,9 @@ struct MLDefectDetector {
     /// 运行 YOLOv8 检测模型（Core ML NMS 导出），返回归一化框 + App type。
     /// 任何异常抛出让上层回退 CV。
     private static func runModel(at url: URL, image: UIImage, maxCount: Int) throws -> [DetectedDefect] {
-        guard let cg = image.cgImage else { return [] }
+        // 优化点 A：推理前做 CLAHE 白平衡增强（失败回退原图，绝不崩溃）
+        guard let cgRaw = image.cgImage else { return [] }
+        let cg: CGImage = ImagePreprocessor.enhance(cgRaw) ?? cgRaw
 
         // Neural Engine 优先（iOS 16+），老设备回退默认配置，避免与相机预览争 GPU 导致抖动。
         let model: MLModel

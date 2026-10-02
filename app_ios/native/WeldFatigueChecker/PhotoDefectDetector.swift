@@ -9,6 +9,7 @@ struct DetectedDefect {
     let rect: CGRect        // 归一化 0..1（原点左上）
     let type: String
     let pixelSize: CGSize   // 原图像素空间的宽高
+    let metric: DefectMetric? = nil   // 优化点 B：公制尺寸(mm)，由 MLDefectDetector.detect 反投影填充；无深度时为 nil
 }
 
 /// 按缺陷类型选取测量像素尺寸（ISO 5817 维度语义）：

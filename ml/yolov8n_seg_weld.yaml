@@ -1,0 +1,27 @@
+# yolov8n_seg_weld.yaml
+# 优化点 B(v2) 实例分割训练配置 —— 用于把 bbox 检测升级为实例分割(mask)，
+# 使 MetricSizer 后续可基于精确 mask 采样 LiDAR 深度（而非整框），提升尺寸精度。
+#
+# 用法（AI Studio / 本地，Ultralytics ≥8.0）：
+#   from ultralytics import YOLO
+#   model = YOLO("yolov8n-seg.pt")            # 注意用 -seg 预训练权重
+#   model.train(data="ml/yolov8n_seg_weld.yaml", epochs=120, imgsz=640,
+#               batch=16, name="weld_seg_v1")
+#   model.export(format="coreml", nms=True, quantize="w8a16", imgsz=640)
+#
+# 类别顺序必须与 app 端 MLDefectDetector.classNames 严格一致（当前 5 类）：
+#   ['porosity','crack','undercut','overlap','unfused']
+# 重训为 7 类时同步改 names 与代码 classNames。
+
+path: .
+train: dataset_weld/images/train
+val:   dataset_weld/images/val
+
+# 实例分割与检测共用同一 data yaml；Ultralytics 依模型架构(-seg)自动走分割训练。
+nc: 5
+names:
+  0: porosity
+  1: crack
+  2: undercut
+  3: overlap
+  4: unfused

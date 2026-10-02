@@ -19,3 +19,12 @@ __pycache__/
 ml/raw_mine/images/
 ml/raw_mine/labels/
 *.log
+
+# ===== 本地回滚备份（勿入库）=====
+*.bak
+WeldDefectModel.mlpackage.bak/
+
+# ===== 大体积训练产物 / 中间数据（勿入库）=====
+ml_kaggle_upload.zip
+ml/raw_mine/previews/
+ml/raw_mine/_merge_check/
