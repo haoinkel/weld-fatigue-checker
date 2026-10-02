@@ -196,12 +196,14 @@ struct MLDefectDetector {
             // Neural Engine 优先（iOS 16+），避免与相机预览争 GPU 导致抖动
             cfg.computeUnits = .cpuAndNeuralEngine
         }
-        // 关键：模型内嵌 NMS 的 confidenceThreshold 出厂默认 0.25（模型描述里写明可覆盖）。
+        // 关键：模型内嵌 NMS 的 confidenceThreshold 出厂默认 0.25。
         // 不覆盖时，原始分数 <0.25 的框在模型内部就被丢弃 —— 域外照片（暗光/粉笔字/角焊缝）
-        // 分数普遍 <0.25 → 模型输出 0 框 → App 端"永远检不出"。压到 0.05 让候选尽量浮出，
-        // 真正的分级过滤交给 App 端 threshold(for:)（灵敏度可调）。
-        // 若参数键不被该模型支持（MLModel 加载抛错），回退不覆盖加载（默认 0.25 行为不变）。
-        cfg.parameters = [MLParameterKey("confidenceThreshold"): 0.05]
+        // 分数普遍 <0.25 → 模型输出 0 框 → App 端"永远检不出"。
+        // 已通过修改模型 spec（Data/com.apple.CoreML/model.mlmodel 二进制 protobuf）将该默认值
+        // 永久改为 0.05：Xcode 26.6 SDK 的 MLParameterKey 既无 confidenceThreshold 静态成员、
+        // 也无公开字符串初始化器（仅 init(coder:)），运行时覆盖编译不过，故改为模型内建、
+        // 由 Xcode 编译 .mlmodel 时原样采用，跨版本稳定。真正的分级过滤交给 App 端
+        // threshold(for:)（灵敏度可调）。
         _nmsThresholdOverridden = true
         let model: MLModel
         do {
