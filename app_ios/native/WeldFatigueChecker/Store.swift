@@ -11,6 +11,10 @@ final class Store: ObservableObject {
     @Published var result: AssessmentResult?
     @Published var photo: UIImage?
 
+    // 阶段2：导入 3D 模型后由几何启发式推断的接头假设（半自动，需用户在设计表单确认）。
+    // nil = 尚未推断；非 nil = 已自动推测并预填表单，设计表单页据此显示「推测依据」横幅。
+    @Published var inferredJoint: JointHypothesis?
+
     // 照片标定比例：每毫米对应多少「显示/原图像素」；nil 表示尚未标定。
     // 标定后，自动识别的缺陷尺寸会以 mm 显示（否则显示像素）。
     @Published var photoPxPerMm: Double?

@@ -16,6 +16,30 @@ struct DesignReviewView: View {
                     Text("填入从 3D 图 / CAD / LiDAR 识别的几何与传力属性，自动标出不合理细部并给改型建议。")
                         .font(.caption).foregroundStyle(Theme.textSecondary)
 
+                    // 阶段2：若 3D 模型已自动推测接头属性，在此回显依据，提示用户确认而非盲信
+                    if let hyp = store.inferredJoint {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "sparkles").foregroundStyle(Theme.cyan)
+                                Text("3D 几何自动推测").bold().foregroundStyle(Theme.textPrimary)
+                                Spacer(minLength: 4)
+                                Button { store.inferredJoint = nil } label: {
+                                    Label("清除标记", systemImage: "xmark.circle")
+                                        .font(.caption2)
+                                }
+                                .foregroundStyle(Theme.textSecondary)
+                            }
+                            Text(hyp.summaryForUI()).font(.caption2).foregroundStyle(Theme.textPrimary)
+                            Text("置信度 \(hyp.confidenceLabel)（\(String(format: "%.0f", hyp.confidence * 100))%）· 依据：\(hyp.rationale)")
+                                .font(.caption2).foregroundStyle(Theme.textSecondary)
+                            Text("全熔透无法从几何判定，已留待人工确认；确认无误后即可用于 EN1993-1-9 比对。")
+                                .font(.caption2).foregroundStyle(Theme.textSecondary)
+                        }
+                        .padding(10)
+                        .background(Theme.panelGradient, in: RoundedRectangle(cornerRadius: 10))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.cyan.opacity(0.3), lineWidth: 1))
+                    }
+
                     Picker("接头类型", selection: $store.design.jointType) {
                         Text("十字接头").tag("cruciform"); Text("T型接头").tag("t_joint")
                         Text("对接").tag("butt"); Text("角接").tag("fillet")

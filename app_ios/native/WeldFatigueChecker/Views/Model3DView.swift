@@ -56,6 +56,10 @@ struct Model3DView: View {
                             Label("填入设计表单", systemImage: "arrow.down.doc")
                         }
                         .buttonStyle(TechButtonStyle(filled: false))
+                        Button { applyInference() } label: {
+                            Label("智能推测接头", systemImage: "sparkles")
+                        }
+                        .buttonStyle(TechButtonStyle(filled: false))
                     }
                 }
                 .padding(.horizontal)
@@ -187,6 +191,8 @@ struct Model3DView: View {
                     } else {
                         self.status = "已加载 \(displayName) ｜ 包围盒(假设 mm) X≈\(Int(sizes.0)) Y≈\(Int(sizes.1)) Z≈\(Int(sizes.2))"
                     }
+                    // 阶段2：导入后自动推测接头属性并预填表单（半自动，用户可在「3D 设计审查」确认）
+                    self.applyInference()
                 } else {
                     self.status = errMsg ?? "加载失败"
                 }
@@ -375,6 +381,25 @@ struct Model3DView: View {
         store.design.plateThicknessMm = max(thick, 1)
         store.design.attachmentLengthMm = max(len, 1)
         status = "已填入设计表单：板厚≈\(Int(thick))mm，长度≈\(Int(len))mm（按模型单位为 mm 假设；若模型单位为 m 请除以 1000）。"
+    }
+
+    // MARK: - 阶段2：基于 3D 网格几何启发式推断接头属性并预填表单（半自动，需用户确认）
+    // 仅作「识别层」增强，不改动 EN1993-1-9 评估内核（见 AUTO_3D_REVIEW_PLAN.md §6）。
+    private func applyInference() {
+        guard let node = modelNode else { return }
+        // 1) 几何（板厚/长度/过渡半径候选）沿用既有逻辑填入
+        fillDesign()
+        // 2) 接头假设（mesh 法线聚类 → 启发式）
+        let hyp = JointInference.inferJoint(from: node)
+        store.design.jointType = hyp.jointType
+        store.design.weldType = hyp.weldType
+        store.design.loadingDirection = hyp.loadingDirection
+        store.design.loadCarrying = hyp.loadCarrying
+        // 全熔透几何无法判定 → 保守默认 false，并在横幅中提示「待确认」（绝不臆测）
+        store.design.fullPenetration = hyp.fullPenetration ?? false
+        store.inferredJoint = hyp
+        status = "几何已填入 + 接头已自动推测（\(hyp.summaryForUI())）。" +
+            "置信度\(hyp.confidenceLabel)，请到「3D 设计审查」逐项确认/修改；全熔透无法从几何判定→待人工确认。"
     }
 
     // MARK: - 阶段1：根据最新评估结果，在 3D 模型上方生成状态标注锚点
