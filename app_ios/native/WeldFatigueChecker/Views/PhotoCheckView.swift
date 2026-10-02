@@ -66,6 +66,8 @@ struct PhotoCheckView: View {
                     }
                     .background(Theme.bgGradient.ignoresSafeArea())
                     .navigationTitle("外观检查")
+                    // iPhone 单栏同样含照片画布：框选模式下禁滚动，防拖拽被滚动吞掉
+                    .scrollDisabled(roiMode)
                 }
                 .navigationViewStyle(.stack)
             }
@@ -145,6 +147,8 @@ struct PhotoCheckView: View {
         }
         .background(Theme.bgGradient.ignoresSafeArea())
         .navigationTitle("照片详情")
+        // 框选焊缝模式下禁用本栏滚动，保证拖拽全部落到照片画布上
+        .scrollDisabled(roiMode)
     }
 
     // MARK: - 顶部说明
@@ -860,7 +864,9 @@ struct AnnotationPhotoView: View {
                 }
             }
             // 焊缝区域拖拽框选（仅在 roiMode 下挂接手势，避免影响标注/标定点按）
-            .gesture(roiMode ? DragGesture(minimumDistance: 0)
+            // 用 highPriorityGesture：照片画布在 ScrollView 内，普通 .gesture 的拖拽
+            // 会被 ScrollView 滚动手势吞掉（真机表现为"框不上"）；高优先级手势可压过滚动。
+            .highPriorityGesture(roiMode ? DragGesture(minimumDistance: 0)
                 .updating($roiDrag) { v, st, _ in
                     if st == nil { st = (v.location, v.location) } else { st = (st!.0, v.location) }
                 }
