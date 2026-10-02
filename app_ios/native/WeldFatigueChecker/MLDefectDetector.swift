@@ -56,6 +56,44 @@ struct MLDefectDetector {
         "unfused":   0.40,
     ]
 
+    /// 检测灵敏度（真机诊断用）：现场照片与训练集分布差异大时原始分数偏低，
+    /// 可降阈值先看召回。standard=按标定阈值；high=×0.5；max=×0.2（下限 0.05）。
+    enum Sensitivity: Int {
+        case standard = 0, high, max
+        var label: String {
+            switch self {
+            case .standard: return "标准"
+            case .high:     return "灵敏"
+            case .max:      return "极灵敏"
+            }
+        }
+    }
+    static var sensitivity: Sensitivity = .standard
+
+    private static func threshold(for cls: String?) -> Double {
+        let base = (cls != nil) ? (perClassConfidenceThreshold[cls!] ?? confidenceThreshold) : confidenceThreshold
+        switch sensitivity {
+        case .standard: return base
+        case .high:     return base * 0.5
+        case .max:      return max(0.05, base * 0.2)
+        }
+    }
+
+    /// 诊断：最近一次 ML 推理中，原始分数最高的若干候选（阈值过滤前）。
+    /// 空结果时上层把它展示出来 —— 区分「模型完全没看到」vs「分数低被阈值卡住」。
+    /// （多线程访问加锁；仅诊断用途。）
+    private static let diagLock = NSLock()
+    private static var _lastRawScores: [(cls: String, score: Double)] = []
+    static var lastRawScores: [(cls: String, score: Double)] {
+        diagLock.lock(); defer { diagLock.unlock() }
+        return _lastRawScores
+    }
+    static var lastRawScoresText: String {
+        let s = lastRawScores.prefix(3)
+        guard !s.isEmpty else { return "无任何候选（模型输出全为背景）" }
+        return s.map { "\($0.cls) \($0.score, specifier: "%.2f")" }.joined(separator: " / ")
+    }
+
     /// 模型文件名（不含扩展名）。编译后为 .mlmodelc，开发期直接拖入为 .mlpackage。
     private static let modelFileName = "WeldDefectModel"
 
@@ -107,9 +145,18 @@ struct MLDefectDetector {
         }
         if useMLModel, let url = compiledModelURL,
            let dets = try? runModel(at: url, image: image, maxCount: maxCount) {
+            diagLock.lock(); _lastUsedML = true; diagLock.unlock()
             return applyROI(dets).map(attachMetric)
         }
+        diagLock.lock(); _lastUsedML = false; diagLock.unlock()
         return applyROI(PhotoDefectDetector.detect(in: image, maxCount: maxCount)).map(attachMetric)
+    }
+
+    /// 诊断：最近一次 detect 实际使用的引擎（true=Core ML 成功推理；false=回退 CV 规则）。
+    private static var _lastUsedML = false
+    static var lastUsedML: Bool {
+        diagLock.lock(); defer { diagLock.unlock() }
+        return _lastUsedML
     }
 
     /// 当前生效的引擎描述（用于自动标注提示文案）
@@ -130,6 +177,29 @@ struct MLDefectDetector {
 
     // MARK: - Core ML 推理（YOLOv8 检测 + Vision）
 
+    /// 模型与请求缓存：MLModel(contentsOf:) 每次重新编译加载非常重（真机可感知卡顿），
+    /// 进程内只加载一次。锁保护（照片页主线程 / 实时扫描相机队列并发调用）。
+    private static let modelLock = NSLock()
+    private static var _cachedRequest: VNCoreMLRequest?
+
+    private static func cachedRequest(for url: URL) throws -> VNCoreMLRequest {
+        modelLock.lock(); defer { modelLock.unlock() }
+        if let r = _cachedRequest { return r }
+        let cfg = MLModelConfiguration()
+        if #available(iOS 16.0, *) {
+            // Neural Engine 优先（iOS 16+），避免与相机预览争 GPU 导致抖动
+            cfg.computeUnits = .cpuAndNeuralEngine
+        }
+        let model = try MLModel(contentsOf: url, configuration: cfg)
+        let vnModel = try VNCoreMLModel(for: model)
+        let request = VNCoreMLRequest(model: vnModel)
+        // scaleFill：原图非等比拉伸到 640×640 模型输入；YOLO 输出归一化坐标直接对应原图
+        // （拉伸逆映射恰好还原），故框位置正确（形状可能轻微失真，不影响分类/定位与尺寸换算）。
+        request.imageCropAndScaleOption = .scaleFill
+        _cachedRequest = request
+        return request
+    }
+
     /// 运行 YOLOv8 检测模型（Core ML NMS 导出），返回归一化框 + App type。
     /// 任何异常抛出让上层回退 CV。
     private static func runModel(at url: URL, image: UIImage, maxCount: Int) throws -> [DetectedDefect] {
@@ -137,21 +207,7 @@ struct MLDefectDetector {
         guard let cgRaw = image.cgImage else { return [] }
         let cg: CGImage = ImagePreprocessor.enhance(cgRaw) ?? cgRaw
 
-        // Neural Engine 优先（iOS 16+），老设备回退默认配置，避免与相机预览争 GPU 导致抖动。
-        let model: MLModel
-        if #available(iOS 16.0, *) {
-            let cfg = MLModelConfiguration()
-            cfg.computeUnits = .cpuAndNeuralEngine
-            model = try MLModel(contentsOf: url, configuration: cfg)
-        } else {
-            model = try MLModel(contentsOf: url)
-        }
-
-        let vnModel = try VNCoreMLModel(for: model)
-        let request = VNCoreMLRequest(model: vnModel)
-        // scaleFill：原图非等比拉伸到 640×640 模型输入；YOLO 输出归一化坐标直接对应原图
-        // （拉伸逆映射恰好还原），故框位置正确（形状可能轻微失真，不影响分类/定位与尺寸换算）。
-        request.imageCropAndScaleOption = .scaleFill
+        let request = try cachedRequest(for: url)
 
         let handler = VNImageRequestHandler(cgImage: cg, options: [:])
         try handler.perform([request])
@@ -184,6 +240,7 @@ struct MLDefectDetector {
         let imgW = Double(cg.width), imgH = Double(cg.height)
 
         var out: [(rect: CGRect, type: String, pixelSize: CGSize, score: Double)] = []
+        var rawAll: [(cls: String, score: Double)] = []
         for i in 0 ..< count {
             // confidence[i] = (nc,) 类分数向量，取 argmax 作为类别与分数
             var best = -1, bestScore = 0.0
@@ -192,8 +249,10 @@ struct MLDefectDetector {
                 if s > bestScore { bestScore = s; best = c }
             }
             let clsName = (best < classNames.count) ? classNames[best] : nil
-            let thresh = (clsName != nil) ? (Self.perClassConfidenceThreshold[clsName!] ?? confidenceThreshold) : confidenceThreshold
-            guard best >= 0, bestScore >= thresh else { continue }
+            if let clsName, bestScore > 0.01 {
+                rawAll.append((clsName, bestScore))   // 诊断：阈值过滤前的原始候选
+            }
+            guard best >= 0, bestScore >= threshold(for: clsName) else { continue }
 
             // coordinates[i] = (4,) 归一化 [x_center, y_center, width, height]
             let cx = coords[i * 4 + 0].doubleValue
@@ -219,6 +278,11 @@ struct MLDefectDetector {
         // 可选：若改用 nms=False 导出，取消下一行注释做应用层 NMS（iouThresh 0.6）。
         // let kept = nms(candidates: out, iouThresh: 0.6)
         // return kept.prefix(maxCount).map { d in DetectedDefect(rect: d.rect, type: d.type, pixelSize: d.pixelSize) }
+
+        // 记录诊断（阈值过滤前的原始 Top 候选，降序取前 5）
+        diagLock.lock()
+        _lastRawScores = rawAll.sorted { $0.score > $1.score }.prefix(5).map { $0 }
+        diagLock.unlock()
 
         return out.prefix(maxCount).map { d in
             DetectedDefect(rect: d.rect, type: d.type, pixelSize: d.pixelSize)

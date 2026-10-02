@@ -351,6 +351,33 @@ struct PhotoCheckView: View {
                                     }
                                 }
                             }
+                            // 检测灵敏度 + 重新识别：现场照片与训练集分布差异大时原始分数偏低，
+                            // 可降阈值先看召回；检出为空时提示区会显示模型原始 Top 置信度辅助诊断。
+                            HStack(spacing: 8) {
+                                Text("灵敏度")
+                                    .font(.caption).foregroundStyle(.secondary)
+                                Picker("", selection: Binding(
+                                    get: { MLDefectDetector.sensitivity.rawValue },
+                                    set: { MLDefectDetector.sensitivity = MLDefectDetector.Sensitivity(rawValue: $0) ?? .standard }
+                                )) {
+                                    ForEach(0..<3) { i in
+                                        Text(MLDefectDetector.Sensitivity(rawValue: i)?.label ?? "").tag(i)
+                                    }
+                                }
+                                .pickerStyle(.segmented)
+                                .frame(maxWidth: 210)
+                                Spacer()
+                                Button {
+                                    autoAnnotate(image: img)
+                                } label: {
+                                    Label("重新识别", systemImage: "arrow.clockwise")
+                                        .font(.caption.bold())
+                                        .padding(.horizontal, 8).padding(.vertical, 5)
+                                        .background(Theme.cyan.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                                        .foregroundStyle(Theme.cyan)
+                                }
+                                .accessibilityLabel("重新自动识别")
+                            }
                             if let ppm = store.photoPxPerMm {
                                 Text("已标定：1 mm ≈ \(ppm, specifier: "%.2f") px（自动框尺寸按 mm 显示）")
                                     .font(.caption2).foregroundStyle(Theme.cyan)
@@ -607,8 +634,15 @@ struct PhotoCheckView: View {
         }
         regradeAll()   // 识别完成后按累计气孔率法统一重评（含气孔双判据）
         let engine = MLDefectDetector.engineName
+        let diag: String = {
+            guard MLDefectDetector.lastUsedML else { return "（本次实际走 CV 规则回退，模型推理未成功）" }
+            return MLDefectDetector.sensitivity == .standard
+                ? " 可把「灵敏度」调到「极灵敏」再试一次。"
+                : " 已在最高灵敏度仍未检出。"
+        }()
         store.autoState = (detects.isEmpty
-            ? "未检测到明显视觉异常（\(engine)）。仍建议按 ISO 5817 做无损检测复核。"
+            ? "未检测到明显视觉异常（\(engine)）。模型原始置信度 Top：\(MLDefectDetector.lastRawScoresText)。\(diag)" +
+              "若 Top 分数普遍 <0.2，说明现场照片（暗光/粉笔字/角焊缝）与训练集差异过大，属模型能力缺口，需补真实场景照片重训。"
             : "已自动识别 \(detects.count) 处疑似缺陷（\(engine)），位置与尺寸已在照片上标注。" +
               (ppm == nil
                 ? " 点「📏 标定比例」设定参照长度后，尺寸以 mm 显示并自动评级。"
