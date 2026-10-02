@@ -235,8 +235,9 @@ struct JointInference {
         func walk(_ node: SCNNode) {
             if let geo = node.geometry,
                let vsrc = geo.sources(for: .vertex).first,
-               let nsrc = geo.sources(for: .normal).first,
-               let vdata = vsrc.data, let ndata = nsrc.data {
+               let nsrc = geo.sources(for: .normal).first {
+                let vdata = vsrc.data
+                let ndata = nsrc.data
                 let tf = node.simdWorldTransform
                 let vstride = vsrc.dataStride > 0 ? vsrc.dataStride : MemoryLayout<Float>.stride * 3
                 let voff = vsrc.dataOffset
@@ -253,8 +254,10 @@ struct JointInference {
                     let nx = ndata.subdata(in: ns..<ns+4).withUnsafeBytes { $0.load(as: Float.self) }
                     let ny = ndata.subdata(in: ns+4..<ns+8).withUnsafeBytes { $0.load(as: Float.self) }
                     let nz = ndata.subdata(in: ns+8..<ns+12).withUnsafeBytes { $0.load(as: Float.self) }
-                    let wp = (tf * simd_float4(px, py, pz, 1)).xyz
-                    let wn = (tf * simd_float4(nx, ny, nz, 0)).xyz
+                    let rp = tf * simd_float4(px, py, pz, 1)
+                    let wp = simd_float3(rp.x, rp.y, rp.z)
+                    let rn = tf * simd_float4(nx, ny, nz, 0)
+                    let wn = simd_float3(rn.x, rn.y, rn.z)
                     out.append((wp, wn))
                 }
             }
@@ -292,7 +295,7 @@ struct JointInference {
     /// 从 normal 源按 float3 读取并变换到世界空间
     private static func appendNormals(from src: SCNGeometrySource, transform tf: simd_float4x4,
                                       into out: inout [simd_float3]) {
-        guard let data = src.data else { return }
+        let data = src.data
         let stride = src.dataStride > 0 ? src.dataStride : MemoryLayout<Float>.stride * 3
         let offset = src.dataOffset
         let count = src.vectorCount
@@ -302,7 +305,8 @@ struct JointInference {
             let x = data.subdata(in: start..<start+4).withUnsafeBytes { $0.load(as: Float.self) }
             let y = data.subdata(in: start+4..<start+8).withUnsafeBytes { $0.load(as: Float.self) }
             let z = data.subdata(in: start+8..<start+12).withUnsafeBytes { $0.load(as: Float.self) }
-            let w = (tf * simd_float4(x, y, z, 0)).xyz
+            let r = tf * simd_float4(x, y, z, 0)
+            let w = simd_float3(r.x, r.y, r.z)
             let len = simd_length(w)
             if len > 1e-6 { out.append(w / len) }
         }
@@ -314,7 +318,8 @@ struct JointInference {
                                           element elem: SCNGeometryElement,
                                           transform tf: simd_float4x4,
                                           into out: inout [simd_float3]) {
-        guard let vdata = vsrc.data, let idata = elem.data else { return }
+        let vdata = vsrc.data
+        let idata = elem.data
         let vstride = vsrc.dataStride > 0 ? vsrc.dataStride : MemoryLayout<Float>.stride * 3
         let voffset = vsrc.dataOffset
         let vcount = vsrc.vectorCount
@@ -327,7 +332,8 @@ struct JointInference {
             let x = vdata.subdata(in: s..<s+4).withUnsafeBytes { $0.load(as: Float.self) }
             let y = vdata.subdata(in: s+4..<s+8).withUnsafeBytes { $0.load(as: Float.self) }
             let z = vdata.subdata(in: s+8..<s+12).withUnsafeBytes { $0.load(as: Float.self) }
-            return (tf * simd_float4(x, y, z, 1)).xyz
+            let r = tf * simd_float4(x, y, z, 1)
+            return simd_float3(r.x, r.y, r.z)
         }
         for t in 0..<primCount {
             let base = t * 3 * bpi
