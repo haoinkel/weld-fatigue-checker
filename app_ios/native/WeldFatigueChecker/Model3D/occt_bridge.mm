@@ -205,10 +205,12 @@ namespace {
             BRepTools::UVBounds(face, u1, u2, v1, v2);
             gp_Pnt P;
             gp_Vec N;
-            if (!gf.Normal((u1 + u2) * 0.5, (v1 + v2) * 0.5, P, N)) continue;
-            gp_Dir n(N);
-            double m = n.Magnitude();
+            // 本版本 BRepGProp_Face::Normal 返回 void（非 Boolean），且无 IsDone；
+            // 退化面会给出近零法线，故在构造 gp_Dir 前先查 N.Magnitude()。
+            gf.Normal((u1 + u2) * 0.5, (v1 + v2) * 0.5, P, N);
+            double m = N.Magnitude();
             if (m < 1e-6) continue;
+            gp_Dir n(N);
             faceNormals.push_back(n);
         }
 
