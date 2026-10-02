@@ -15,6 +15,11 @@ final class Store: ObservableObject {
     // nil = 尚未推断；非 nil = 已自动推测并预填表单，设计表单页据此显示「推测依据」横幅。
     @Published var inferredJoint: JointHypothesis?
 
+    // 阶段3 M3：逐细部（per-weld-seam）评估列表。nil = 尚未做逐焊缝评估；
+    // 非 nil = 已对模型各焊缝候选位置独立评估，供 3D 多锚点标注与结果页逐条展示。
+    // 重新导入模型 / 重新评估时由 Model3DView 置 nil（旧锚点失效）。
+    @Published var weldSeams: [WeldSeam]? = nil
+
     // 照片标定比例：每毫米对应多少「显示/原图像素」；nil 表示尚未标定。
     // 标定后，自动识别的缺陷尺寸会以 mm 显示（否则显示像素）。
     @Published var photoPxPerMm: Double?

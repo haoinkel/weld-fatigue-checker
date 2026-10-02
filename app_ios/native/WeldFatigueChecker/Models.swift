@@ -104,3 +104,15 @@ struct AssessmentResult {
     let plan: [PlanItem]
     let disclaimer: String
 }
+
+// MARK: - 阶段3 M3：逐细部（per-weld-seam）评估项
+/// 一条焊缝 = 一个 3D 锚点位置 + 该处实际使用的接头参数 + 独立评估结果。
+/// 位置用 (x,y,z) 元组而非 SCNVector3，避免 Models 引入 SceneKit 依赖（Store 直接持有）。
+struct WeldSeam: Identifiable {
+    let id = UUID()
+    let index: Int                                   // 第几条焊缝（结果列表序号 1..n）
+    let position: (x: Float, y: Float, z: Float)    // 焊缝锚点 3D 坐标（来自几何提取）
+    let design: DesignInput                          // 实际用于该焊缝的接头参数（局部几何/M3 自动或全局表单）
+    let assessment: AssessmentResult                 // 对该焊缝独立评估（复用 DesignReviewer.assess 内核）
+    let note: String                                 // 该焊缝接头判定的来源说明（如「局部板面夹角自动判定」）
+}

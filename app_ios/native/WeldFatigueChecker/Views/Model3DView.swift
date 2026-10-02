@@ -42,14 +42,26 @@ struct ModelAnnotation: Identifiable, Equatable {
     let detail: String
 
     // 仅按内容比较（忽略 id），避免每次 body 重建都触发场景重绘
-    static func == (lhs: ModelAnnotation, rhs: ModelAnnotation) -> Bool {
-        lhs.position.x == rhs.position.x && lhs.position.y == rhs.position.y && lhs.position.z == rhs.position.z
-            && lhs.radius == rhs.radius && lhs.severity == rhs.severity
-            && lhs.title == rhs.title && lhs.detail == rhs.detail
+        static func == (lhs: ModelAnnotation, rhs: ModelAnnotation) -> Bool {
+            lhs.position.x == rhs.position.x && lhs.position.y == rhs.position.y && lhs.position.z == rhs.position.z
+                && lhs.radius == rhs.radius && lhs.severity == rhs.severity
+                && lhs.title == rhs.title && lhs.detail == rhs.detail
+        }
     }
-}
 
-struct Model3DView: View {
+    // MARK: - M3：焊缝候选种子（阶段3 逐细部评估用）
+    /// 由 JointInference.plateGroups 的相邻板面组质心中点生成；
+    /// normalA/B 携带两板面的法线，供 runPerSeamAnalysis 做局部接头判定（使不同焊缝有差异化结论）。
+    struct SeamSeed {
+        let position: (x: Float, y: Float, z: Float)
+        let normalA: simd_float3
+        let normalB: simd_float3
+        let countA: Int
+        let countB: Int
+        let single: Bool   // 单板模型（无相邻板面组）退回
+    }
+
+    struct Model3DView: View {
     @EnvironmentObject var store: Store
     @State private var showPicker = false
     @State private var modelNode: SCNNode?
@@ -76,6 +88,10 @@ struct Model3DView: View {
                         .buttonStyle(TechButtonStyle(filled: false))
                         Button { applyInference() } label: {
                             Label("智能推测接头", systemImage: "sparkles")
+                        }
+                        .buttonStyle(TechButtonStyle(filled: false))
+                        Button { runPerSeamAnalysis() } label: {
+                            Label("逐焊缝评估(M3)", systemImage: "square.stack.3d.up")
                         }
                         .buttonStyle(TechButtonStyle(filled: false))
                     }
@@ -201,6 +217,7 @@ struct Model3DView: View {
             DispatchQueue.main.async {
                 if let n = node {
                     self.modelNode = n
+                    self.store.weldSeams = nil   // 新模型需要重新做逐焊缝评估（旧锚点失效）
                     self.bbox = sizes
                     self.occtFeatures = feat
                     self.loadedName = displayName
@@ -430,8 +447,104 @@ struct Model3DView: View {
             "置信度\(hyp.confidenceLabel)，请到「3D 设计审查」逐项确认/修改；全熔透无法从几何判定→待人工确认。"
     }
 
+    // MARK: - 阶段3 M3：逐焊缝评估（复用评估内核，不改计算逻辑）
+    private func scnDistance(_ a: SCNVector3, _ b: SCNVector3) -> Float {
+        simd_distance(simd_float3(a.x, a.y, a.z), simd_float3(b.x, b.y, b.z))
+    }
+
+    /// M3：从模型网格提取焊缝候选（相邻板面组的质心中点）。纯 Swift，不依赖 OCCT。
+    private func extractSeamSeeds(from node: SCNNode) -> [SeamSeed] {
+        let groups = JointInference.plateGroups(from: node)
+        let (mn, mx) = node.boundingBox
+        let center = SCNVector3((mn.x + mx.x) / 2, (mn.y + mx.y) / 2, (mn.z + mx.z) / 2)
+        let centerT = (center.x, center.y, center.z)
+        let diag = scnDistance(mn, mx)
+        guard groups.count >= 2 else {
+            return [SeamSeed(position: centerT, normalA: simd_float3(0,1,0), normalB: simd_float3(0,1,0), countA: 1, countB: 1, single: true)]
+        }
+        var seeds: [SeamSeed] = []
+        for i in 0..<groups.count {
+            for j in (i+1)..<groups.count {
+                let d = simd_distance(groups[i].centroid, groups[j].centroid)
+                let dot = Double(abs(simd_dot(groups[i].normal, groups[j].normal)))
+                if d < diag * Float(0.6) && dot < 0.85 {   // 相邻且非近似平行 → 板件相交处有焊缝
+                    let mid = (groups[i].centroid + groups[j].centroid) * Float(0.5)
+                    seeds.append(SeamSeed(position: (mid.x, mid.y, mid.z),
+                                         normalA: groups[i].normal, normalB: groups[j].normal,
+                                         countA: groups[i].count, countB: groups[j].count, single: false))
+                }
+            }
+        }
+        if seeds.isEmpty {
+            return [SeamSeed(position: centerT, normalA: simd_float3(0,1,0), normalB: simd_float3(0,1,0), countA: 1, countB: 1, single: true)]
+        }
+        return Array(seeds.prefix(6))
+    }
+
+    /// M3：对每条焊缝候选独立评估（复用 DesignReviewer.assess 内核，不改计算逻辑），生成多锚点数据源。
+    private func runPerSeamAnalysis() {
+        guard let node = modelNode else { return }
+        let seeds = extractSeamSeeds(from: node)
+        let base = store.design
+        var seams: [WeldSeam] = []
+        for (i, seed) in seeds.enumerated() {
+            var d = base
+            var note: String
+            if seed.single {
+                note = "单一板件：无局部几何可参考，沿用设计表单接头参数。"
+            } else {
+                let dot = Double(abs(simd_dot(seed.normalA, seed.normalB)))
+                let angle = Int(acos(min(dot, 1.0)) * 180 / Double.pi)
+                let ratio = Double(min(seed.countA, seed.countB)) / Double(max(max(seed.countA, seed.countB), 1))
+                if dot > 0.85 {
+                    d.jointType = "lap"; d.weldType = "fillet"; d.loadingDirection = "longitudinal"; d.loadCarrying = false
+                    note = "局部板面近似平行（夹角≈\(angle)°）→ 自动判定为搭接（纵向、非传力）。"
+                } else if dot < 0.5 {
+                    d.jointType = ratio > 0.5 ? "cruciform" : "t_joint"
+                    d.weldType = "fillet"; d.loadingDirection = "transverse"; d.loadCarrying = true
+                    note = "局部板面近似正交（夹角≈\(angle)°）→ 自动判定为\(ratio > 0.5 ? "十字" : "T型")接头（横向、传力）。"
+                } else {
+                    d.jointType = "butt"; d.weldType = "butt"; d.loadingDirection = "transverse"; d.loadCarrying = true
+                    note = "局部板面夹角≈\(angle)°（中间值）→ 自动判定为对接（保守）。"
+                }
+            }
+            let a = DesignReviewer.assess(design: d, vision: VisionInput(), params: store.params, mode: "design")
+            seams.append(WeldSeam(index: i + 1, position: seed.position, design: d, assessment: a, note: note))
+        }
+        store.weldSeams = seams
+        status = "已对 \(seams.count) 条焊缝做逐细部评估（M3）。3D 模型上已生成彩色锚点：绿=合理 / 红=不合理 / 黄=全熔透待确认；点锚点看详情，或到结果页看逐条结论。"
+    }
+
     // MARK: - 阶段1：根据最新评估结果，在 3D 模型上方生成状态标注锚点
     private func buildAnnotations() -> [ModelAnnotation] {
+        // M3 优先：逐焊缝多锚点
+        if let seams = store.weldSeams, !seams.isEmpty, let node = modelNode {
+            let (mn, mx) = node.boundingBox
+            let size = max(mx.x - mn.x, max(mx.y - mn.y, mx.z - mn.z))
+            let radius = max(size * 0.025, 1)
+            return seams.map { s in
+                let r = s.assessment.fatigue
+                let needsFP = (s.design.jointType == "cruciform" || s.design.jointType == "t_joint"
+                              || (s.design.weldType == "fillet" && s.design.loadCarrying))
+                let sev: AnnotationSeverity
+                let verdict: String
+                if !r.pass {
+                    sev = .fail
+                    verdict = r.defectForcedFail ? "缺陷强制判废 ✗" : "不满足 ✗"
+                } else if needsFP && !s.design.fullPenetration {
+                    sev = .pending
+                    verdict = "满足（全熔透待确认）"
+                } else {
+                    sev = .pass
+                    verdict = "满足 ✓"
+                }
+                let detail = "焊缝 #\(s.index)\n对比标准表：EN 1993-1-9 表 \(r.table ?? "—")\n有效 FAT \(Int(r.effectiveFat)) · 利用率 \(String(format: "%.2f", r.utilization)) · \(verdict)\n\(s.note)"
+                return ModelAnnotation(position: SCNVector3(s.position.x, s.position.y, s.position.z),
+                                      radius: radius, severity: sev,
+                                      title: "焊缝 #\(s.index) · \(r.detailName)", detail: detail)
+            }
+        }
+        // 退回：阶段1 单浮标（整体结论）
         guard let node = modelNode, let result = store.result else { return [] }
         let (mn, mx) = node.boundingBox
         let center = SCNVector3((mn.x + mx.x) / 2, (mn.y + mx.y) / 2, (mn.z + mx.z) / 2)

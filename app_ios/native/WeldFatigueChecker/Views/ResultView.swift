@@ -103,6 +103,37 @@ struct ResultView: View {
                 .techCard()
             }
 
+            if let seams = store.weldSeams, !seams.isEmpty {
+                Text("④ 逐细部评估（M3 · 3D 图上多锚点）").font(.subheadline.bold())
+                ForEach(seams) { s in
+                    let r = s.assessment.fatigue
+                    let needsFP = (s.design.jointType == "cruciform" || s.design.jointType == "t_joint"
+                                  || (s.design.weldType == "fillet" && s.design.loadCarrying))
+                    let sevColor: Color = (!r.pass) ? Theme.danger
+                        : (needsFP && !s.design.fullPenetration ? Theme.warn : Theme.ok)
+                    let verdict = (!r.pass) ? (r.defectForcedFail ? "缺陷强制判废" : "不满足")
+                        : (needsFP && !s.design.fullPenetration ? "满足（全熔透待确认）" : "满足")
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 8) {
+                            Circle().fill(sevColor).frame(width: 8, height: 8)
+                            Text("焊缝 #\(s.index) · \(r.detailName)").bold()
+                            Spacer()
+                            Text(verdict).font(.caption.bold()).foregroundStyle(sevColor)
+                        }
+                        Text("对比标准表：EN 1993-1-9 表 \(r.table ?? "—") ｜ 有效FAT \(Int(r.effectiveFat)) ｜ 利用率 \(String(format: "%.2f", r.utilization))")
+                            .font(.caption).foregroundStyle(Theme.textSecondary)
+                        if !s.assessment.design.warnings.isEmpty {
+                            Text("⚠ " + s.assessment.design.warnings.map { $0.title }.joined(separator: "；"))
+                                .font(.caption2).foregroundStyle(Theme.warn)
+                        }
+                        Text(s.note).font(.caption2).foregroundStyle(Theme.textSecondary)
+                    }
+                    .techCard()
+                }
+                Text("提示：以上每条焊缝对应 3D 模型上的一个彩色锚点（绿=合理 / 红=不合理 / 黄=全熔透待确认）。各焊缝局部接头由几何自动判定，其余参数沿用设计表单；如需每焊缝人工差异化，请逐项修改表单后重评。")
+                    .font(.caption2).foregroundStyle(Theme.textSecondary)
+            }
+
             HStack(spacing: 12) {
                 Button {
                     if let url = ReportGenerator.exportPDF(result) {

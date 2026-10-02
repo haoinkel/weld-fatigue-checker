@@ -13,6 +13,14 @@
 import Foundation
 import SceneKit
 
+/// M3（阶段3）焊缝位置提取基础：板面法线聚类出的「板面组」（质心 + 平均法线 + 顶点数）。
+/// 焊缝候选 = 相邻板面组的质心中点（由 Model3DView 计算）。纯 Swift，不依赖 OCCT。
+struct PlateGroup {
+    let centroid: simd_float3   // 板面组质心（模型本地坐标）
+    let normal: simd_float3     // 板面平均法线方向（单位向量）
+    let count: Int              // 该组顶点数（用于规模比）
+}
+
 /// 接头几何推断假设（阶段2 输出契约，对应规划文档 M2 的 JointHypothesis）
 struct JointHypothesis: Equatable {
     let jointType: String          // butt | fillet | t_joint | cruciform | corner | lap
@@ -183,6 +191,77 @@ struct JointInference {
         let rat = "仅 OCCT 原语（无网格法线）：板面组=\(o.plateGroupCount)，二面角≈\(Int(o.dihedralAngle))°，主体板厚≈\(Int(o.plateThickness))mm → 推断为 \(JointHypothesis.jointTypeLabel(jt))，请人工确认。"
         return JointHypothesis(jointType: jt, weldType: weldType, loadingDirection: loadingDirection,
             loadCarrying: loadCarrying, fullPenetration: nil, confidence: 0.5, rationale: rat)
+    }
+
+    // MARK: - M3：板面组提取（焊缝位置候选基础，纯 Swift）
+
+    /// 从网格法线方向聚类出「板面组」，返回每组质心与平均法线。
+    /// 复用 collectVertices 收集 (位置, 法线) 对，按 |dot|>0.9 合并为板面组（± 视作同一板）。
+    /// 仅保留占比 > 8% 的显著板面组（其余视为噪声/倒角）。
+    static func plateGroups(from root: SCNNode) -> [PlateGroup] {
+        let vn = collectVertices(from: root)
+        guard !vn.isEmpty else { return [] }
+        var clusters: [(axis: simd_float3, normalSum: simd_float3, posSum: simd_float3, count: Int)] = []
+        for (p, n) in vn {
+            let len = simd_length(n)
+            guard len > 1e-6 else { continue }
+            let u = n / len
+            var matched = false
+            for i in clusters.indices {
+                if abs(simd_dot(u, clusters[i].axis)) > 0.9 {
+                    clusters[i].normalSum += u
+                    clusters[i].posSum += p
+                    clusters[i].count += 1
+                    matched = true
+                    break
+                }
+            }
+            if !matched { clusters.append((axis: u, normalSum: u, posSum: p, count: 1)) }
+        }
+        let total = max(clusters.reduce(0) { $0 + $1.count }, 1)
+        return clusters
+            .filter { Float($0.count) / Float(total) > 0.08 }
+            .sorted { $0.count > $1.count }
+            .map { c in
+                let axis = simd_normalize(c.normalSum)
+                let cen = c.count > 0 ? c.posSum / Float(c.count) : simd_float3(0, 0, 0)
+                return PlateGroup(centroid: cen, normal: axis, count: c.count)
+            }
+    }
+
+    /// 递归遍历节点树，收集所有几何的 (顶点位置, 顶点法线) 对（世界/本地坐标，法线已归一化）。
+    private static func collectVertices(from root: SCNNode) -> [(simd_float3, simd_float3)] {
+        var out: [(simd_float3, simd_float3)] = []
+        func walk(_ node: SCNNode) {
+            if let geo = node.geometry,
+               let vsrc = geo.sources(for: .vertex).first,
+               let nsrc = geo.sources(for: .normal).first,
+               let vdata = vsrc.data, let ndata = nsrc.data {
+                let tf = node.simdWorldTransform
+                let vstride = vsrc.dataStride > 0 ? vsrc.dataStride : MemoryLayout<Float>.stride * 3
+                let voff = vsrc.dataOffset
+                let nstride = nsrc.dataStride > 0 ? nsrc.dataStride : MemoryLayout<Float>.stride * 3
+                let noff = nsrc.dataOffset
+                let n = min(vsrc.vectorCount, nsrc.vectorCount)
+                for i in 0..<n {
+                    let vs = voff + i * vstride
+                    let ns = noff + i * nstride
+                    guard vs + 12 <= vdata.count, ns + 12 <= ndata.count else { continue }
+                    let px = vdata.subdata(in: vs..<vs+4).withUnsafeBytes { $0.load(as: Float.self) }
+                    let py = vdata.subdata(in: vs+4..<vs+8).withUnsafeBytes { $0.load(as: Float.self) }
+                    let pz = vdata.subdata(in: vs+8..<vs+12).withUnsafeBytes { $0.load(as: Float.self) }
+                    let nx = ndata.subdata(in: ns..<ns+4).withUnsafeBytes { $0.load(as: Float.self) }
+                    let ny = ndata.subdata(in: ns+4..<ns+8).withUnsafeBytes { $0.load(as: Float.self) }
+                    let nz = ndata.subdata(in: ns+8..<ns+12).withUnsafeBytes { $0.load(as: Float.self) }
+                    let wp = (tf * simd_float4(px, py, pz, 1)).xyz
+                    let wn = (tf * simd_float4(nx, ny, nz, 0)).xyz
+                    out.append((wp, wn))
+                }
+            }
+            for c in node.childNodes { walk(c) }
+        }
+        walk(root)
+        return out
     }
 
     // MARK: - 几何法线收集（安全读取，避免指针越界崩溃）
