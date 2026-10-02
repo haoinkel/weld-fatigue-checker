@@ -40,9 +40,10 @@ final class RealtimeDefectScanner: NSObject, ObservableObject,
     /// 最近一帧（用于「捕获快照」写入报告）；同时记录其尺寸供叠层做 aspectFill 映射
     @Published var lastCapturedImage: UIImage? = nil
     @Published var frameSize: CGSize = CGSize(width: 720, height: 1280)
-    /// 焊缝区域闸门（归一化 0..1，由 LiveScanView 的「框选焊缝」写入）。
-    /// 为 nil 时不检测任何缺陷（避免扫描非焊缝物体误报余高等）；设置后只检测该区域内缺陷。
-    @Published var roi: CGRect? = nil
+    /// 焊缝区域闸门（归一化 0..1 的矩形数组，由 LiveScanView 的「框选焊缝」追加写入）。
+    /// 为空时不检测任何缺陷（避免扫描非焊缝物体误报余高等）；非空时只保留中心落在
+    /// 任一区域内的缺陷（多处框选 = 多条焊缝分别检出）。
+    @Published var rois: [CGRect] = []
 
     // MARK: - 参数
     /// 单帧检测节流间隔（秒）：约 6.7 fps，足够实时预览且省电。
@@ -161,35 +162,38 @@ final class RealtimeDefectScanner: NSObject, ObservableObject,
         }
 
         // 焊缝区域闸门：未框选焊缝时不检测，避免非焊缝物体（高光/纹理）被误判为余高等缺陷
-        guard let roi = roi else {
+        guard !rois.isEmpty else {
             DispatchQueue.main.async {
                 self.detections = []
             }
             return
         }
 
-        // 同一入口：模型可用走 Core ML，否则回退 CV 规则（均按 roi 过滤）
-        let dets = MLDefectDetector.detect(in: ui, maxCount: 16, roi: roi)
+        // 多处框选：单次全图检测（不限区域），再保留中心落在任一 ROI 内的缺陷
+        // （与 MLDefectDetector 单框 roi 过滤的"中心点判定"语义一致）
+        let all = MLDefectDetector.detect(in: ui, maxCount: 24, roi: nil)
+        let dets = all.filter { d in
+            let c = CGPoint(x: d.rect.midX, y: d.rect.midY)
+            return rois.contains { $0.contains(c) }
+        }
 
         DispatchQueue.main.async {
             self.detections = dets
         }
     }
 
-    /// 把 CVPixelBuffer 转成 cgImage 支撑的 UIImage（竖屏、降采样到 ≤720px 提速）
+    /// 把 CVPixelBuffer 转成 cgImage 支撑的 UIImage（竖屏、降采样到 ≤720px 提速）。
+    /// 注：CIContext 创建开销大，使用共享实例；降采样用 CIImage transform，免去 UIGraphicsImageRenderer 重绘。
+    private static let sharedCIContext = CIContext()
+
     private static func uiImage(from pb: CVPixelBuffer) -> (UIImage, CGSize)? {
         let ci = CIImage(cvPixelBuffer: pb)
         let w = ci.extent.width, h = ci.extent.height
         guard w > 0, h > 0 else { return nil }
         let maxDim: CGFloat = 720
         let scale = min(1.0, maxDim / max(w, h))
-        let tw = w * scale, th = h * scale
-        let ctx = CIContext()
-        guard let cg = ctx.createCGImage(ci, from: CGRect(x: 0, y: 0, width: w, height: h)) else { return nil }
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: tw, height: th))
-        let ui = renderer.image { _ in
-            UIImage(cgImage: cg).draw(in: CGRect(x: 0, y: 0, width: tw, height: th))
-        }
-        return (ui, CGSize(width: tw, height: th))
+        let small = ci.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        guard let cg = sharedCIContext.createCGImage(small, from: small.extent) else { return nil }
+        return (UIImage(cgImage: cg), small.extent.size)
     }
 }

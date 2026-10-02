@@ -7,29 +7,13 @@
 import SwiftUI
 import AVFoundation
 
-// MARK: - 相机预览层（AVCaptureVideoPreviewLayer 容器）
-
-struct CameraPreview: UIViewRepresentable {
-    let session: AVCaptureSession
-
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView(frame: .zero)
-        view.backgroundColor = .black
-        let layer = AVCaptureVideoPreviewLayer(session: session)
-        layer.videoGravity = .resizeAspectFill
-        layer.frame = view.bounds
-        view.layer.addSublayer(layer)
-        context.coordinator.previewLayer = layer
-        return view
-    }
-
-    func updateUIView(_ uiView: UIView, context: Context) {
-        context.coordinator.previewLayer?.frame = uiView.bounds
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
-    final class Coordinator { var previewLayer: AVCaptureVideoPreviewLayer? }
-}
+// MARK: - 相机预览
+//
+// 真机实证：AVCaptureVideoPreviewLayer 在本 App 层级下表现不稳定（帧率正常但画面全黑），
+// 而 captureOutput 送来的 lastCapturedImage 已证明持续更新（FPS 计数正常）。
+// 故预览直接显示与检测同源的最近帧：① 不可能黑屏；② 与缺陷框叠层坐标完全对齐
+// （叠层的 aspectFill 映射本来就是按 frameSize 算的）。代价是预览帧率≈检测节流帧率(约7fps)，
+// 对"框选焊缝 + 看缺陷框"的用途完全够用。
 
 // MARK: - 主视图
 
@@ -42,15 +26,27 @@ struct LiveScanView: View {
     @State private var useMLModel: Bool = MLDefectDetector.useMLModel
     @State private var captureMsg: String = ""
 
-    // 焊缝区域(ROI)框选：拖拽期间记录起止屏幕点；提交后写入 scanner.roi 与 store
+    // 焊缝区域(ROI)框选：拖拽期间记录起止屏幕点；提交后追加写入 scanner.rois 与 store
     @State private var roiDrawing: Bool = false
     @State private var roiStart: CGPoint?
     @State private var roiCurrent: CGPoint?
 
     var body: some View {
         ZStack {
-            CameraPreview(session: scanner.session)
-                .ignoresSafeArea()
+            // 相机预览：直接显示与检测同源的最近帧（不再依赖预览层，杜绝黑屏且坐标对齐）
+            Group {
+                if let img = scanner.lastCapturedImage {
+                    Image(uiImage: img)
+                        .resizable()
+                        .scaledToFill()
+                        .clipped()
+                } else {
+                    Color.black
+                    Text("正在启动相机…（首次约需 1~2 秒）")
+                        .font(.subheadline).foregroundStyle(.white.opacity(0.7))
+                }
+            }
+            .ignoresSafeArea()
 
             GeometryReader { geo in
                 // aspectFill 映射：归一化检测框 → 屏幕坐标
@@ -63,14 +59,14 @@ struct LiveScanView: View {
                     // ZStack 尺寸为 0 → contentShape 命中区域为空 → 框选拖拽永远无法触发。
                     Color.clear
 
-                    // 已提交的焊缝区域（虚线黄）：区域外不检测
-                    if let r = scanner.roi {
+                    // 已提交的焊缝区域（虚线黄，支持多处）：区域外不检测
+                    ForEach(Array(scanner.rois.enumerated()), id: \.offset) { ri, r in
                         let rs = Self.screenOf(r, offX: offX, offY: offY, iwP: iwP, ihP: ihP)
                         Rectangle()
                             .stroke(Color.yellow, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
                             .frame(width: rs.width, height: rs.height)
                             .position(x: rs.midX, y: rs.midY)
-                        Text("焊缝区域")
+                        Text("焊缝#\(ri + 1)")
                             .font(.system(size: 11, weight: .bold))
                             .foregroundStyle(.black)
                             .padding(.horizontal, 5).padding(.vertical, 2)
@@ -132,8 +128,9 @@ struct LiveScanView: View {
                         let rect = CGRect(x: min(n0.x, n1.x), y: min(n0.y, n1.y),
                                           width: abs(n1.x - n0.x), height: abs(n1.y - n0.y))
                         if rect.width > 0.02, rect.height > 0.02 {   // 太小视为误触
-                            scanner.roi = rect
-                            store.vision.weldSeamROI = rect
+                            // 多处框选：新框追加（可连续框多条焊缝/多个区域）
+                            scanner.rois.append(rect)
+                            store.vision.weldSeamROIs = scanner.rois
                         }
                         roiStart = nil; roiCurrent = nil
                         roiDrawing = false
@@ -196,12 +193,12 @@ struct LiveScanView: View {
                                              in: RoundedRectangle(cornerRadius: 8))
                                 .foregroundStyle(roiDrawing ? .black : Theme.cyan)
                         }
-                        if scanner.roi != nil {
+                        if !scanner.rois.isEmpty {
                             Button {
-                                scanner.roi = nil
-                                store.vision.weldSeamROI = nil
+                                scanner.rois = []
+                                store.vision.weldSeamROIs = []
                             } label: {
-                                Label("清除", systemImage: "xmark")
+                                Label("清除全部", systemImage: "xmark")
                                     .font(.subheadline)
                                     .padding(.horizontal, 8).padding(.vertical, 6)
                                     .background(Color.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
@@ -212,8 +209,8 @@ struct LiveScanView: View {
                     }
                     .padding(.horizontal, 8)
 
-                    if scanner.roi == nil {
-                        Text("未框选焊缝区域：暂不检测任何缺陷（避免把非焊缝物体误报为余高）。点「🎯 框选焊缝」在预览上拖拽出焊缝范围。")
+                    if scanner.rois.isEmpty {
+                        Text("未框选焊缝区域：暂不检测任何缺陷（避免把非焊缝物体误报为余高）。点「🎯 框选焊缝」在预览上拖拽出焊缝范围；可连续框选多处，每拖一次追加一个区域。")
                             .font(.caption2).foregroundStyle(.orange)
                             .padding(6)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -276,7 +273,7 @@ struct LiveScanView: View {
         .onAppear {
             scanner.start()
             // 沿用之前已框选的焊缝区域（若用户已在照片或上次扫描中框选过）
-            scanner.roi = store.vision.weldSeamROI
+            scanner.rois = store.vision.weldSeamROIs
         }
         .onDisappear { scanner.stop() }
     }

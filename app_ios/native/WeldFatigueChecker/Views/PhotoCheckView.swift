@@ -7,6 +7,8 @@ struct PhotoCheckView: View {
     @EnvironmentObject var store: Store
     @Environment(\.horizontalSizeClass) private var hSize
     @State private var pickerItem: PhotosPickerItem?
+    // 系统相机拍照（fullScreenCover）
+    @State private var showCamera: Bool = false
 
     // iPad 双栏：右栏当前选中查看的缺陷行
     @State private var selectedImpIndex: Int?
@@ -74,7 +76,7 @@ struct PhotoCheckView: View {
         }
         .onChange(of: store.vision.plateThicknessMm) { _, _ in regradeAll() }
         // 焊缝区域(ROI)变化后，按新区域重新自动识别（框选即触发）
-        .onChange(of: store.vision.weldSeamROI) { _, _ in
+        .onChange(of: store.vision.weldSeamROIs) { _, _ in
             if let img = store.photo { autoAnnotate(image: img) }
         }
         // LiDAR 测距 sheet（连续模式：自动列出所有未填尺寸的缺陷，逐一测距）
@@ -156,7 +158,7 @@ struct PhotoCheckView: View {
     // 工作流进度：根据当前状态推导用户走到了哪一步（0-based；-1 尚未开始）
     private var workflowCurrent: Int {
         let hasPhoto = store.photo != nil
-        let roiSet   = store.vision.weldSeamROI != nil
+        let roiSet   = !store.vision.weldSeamROIs.isEmpty
         let hasDef   = !store.vision.imperfections.isEmpty
         let calib    = store.photoPxPerMm != nil
         let computed = store.result != nil
@@ -225,8 +227,11 @@ struct PhotoCheckView: View {
 
     private var actionButtons: some View {
         VStack(alignment: .leading, spacing: 10) {
-            PhotosPicker(selection: $pickerItem, matching: .images) {
-                Label("拍摄 / 选择照片", systemImage: "camera.fill")
+            // 拍照：调用系统相机（此前只有相册入口，用户反馈缺拍照选项）
+            Button {
+                showCamera = true
+            } label: {
+                Label("拍照", systemImage: "camera.fill")
                     .frame(maxWidth: .infinity).padding(12)
                     .foregroundStyle(.black)
                     .background(LinearGradient(colors: [Theme.cyan, Theme.blue],
@@ -234,8 +239,21 @@ struct PhotoCheckView: View {
                                  in: Capsule())
                     .shadow(color: Theme.cyan.opacity(0.35), radius: 10, y: 0)
             }
-            .accessibilityLabel("拍摄或选择焊缝照片")
-            .accessibilityHint("从相册选取或调用相机拍摄焊缝照片")
+            .accessibilityLabel("拍摄焊缝照片")
+            .accessibilityHint("调用系统相机拍摄焊缝照片")
+            .fullScreenCover(isPresented: $showCamera) {
+                SystemCameraPicker { img in applyNewPhoto(img) }
+                    .ignoresSafeArea()
+            }
+
+            // 从相册选择
+            PhotosPicker(selection: $pickerItem, matching: .images) {
+                Label("从相册选择", systemImage: "photo.on.rectangle")
+                    .frame(maxWidth: .infinity).padding(12)
+                    .foregroundStyle(Theme.cyan)
+                    .background(Theme.cyan.opacity(0.12), in: Capsule())
+            }
+            .accessibilityLabel("从相册选择焊缝照片")
             .onChange(of: pickerItem) { _, newItem in loadPhoto(from: newItem) }
 
             // 激光雷达自动识别焊缝及缺陷（仅 LiDAR 设备可用）
@@ -320,7 +338,18 @@ struct PhotoCheckView: View {
                                     .foregroundStyle(roiMode ? .black : Theme.cyan)
                                 }
                                 .accessibilityLabel("框选焊缝区域")
-                                .accessibilityHint("在照片上拖拽框住焊缝范围，检测只在该区域内生效")
+                                .accessibilityHint("在照片上拖拽框住焊缝范围，可连续框选多处，检测只在框内生效")
+                                if !store.vision.weldSeamROIs.isEmpty {
+                                    Button {
+                                        store.vision.weldSeamROIs = []
+                                    } label: {
+                                        Label("清除框选", systemImage: "xmark")
+                                            .font(.subheadline)
+                                            .padding(.horizontal, 8).padding(.vertical, 6)
+                                            .background(Color.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                                            .foregroundStyle(.red)
+                                    }
+                                }
                             }
                             if let ppm = store.photoPxPerMm {
                                 Text("已标定：1 mm ≈ \(ppm, specifier: "%.2f") px（自动框尺寸按 mm 显示）")
@@ -343,7 +372,7 @@ struct PhotoCheckView: View {
                                     if calPts.count == 2 { calRealMm = ""; showCalAlert = true }
                                 },
                                 roiMode: $roiMode,
-                                weldSeamROI: $store.vision.weldSeamROI
+                                weldSeamROIs: $store.vision.weldSeamROIs
                             )
                             .frame(maxWidth: .infinity)
                             .frame(height: canvasHeight(for: img))
@@ -371,9 +400,9 @@ struct PhotoCheckView: View {
                                      : "点击照片任意位置即可新建一个带位置标注的缺陷；或先点缺陷行的 📍 再点照片，定位到指定缺陷。")
                                     .font(.caption).foregroundStyle(.secondary)
                             } else if roiMode {
-                                Text(store.vision.weldSeamROI == nil
+                                Text(store.vision.weldSeamROIs.isEmpty
                                      ? "框选焊缝：在照片上拖拽出一个矩形框住焊缝范围。"
-                                     : "已框选焊缝区域，检测只在框内生效；可重新拖拽调整，或用「📏 标定比例」/LiDAR 量测得到 mm 后评级。")
+                                     : "已框选 \(store.vision.weldSeamROIs.count) 处焊缝区域，检测只在框内生效；可继续拖拽追加更多区域，或用「📏 标定比例」/LiDAR 量测得到 mm 后评级。")
                                     .font(.caption).foregroundStyle(.secondary)
             }
                         }
@@ -526,30 +555,38 @@ struct PhotoCheckView: View {
         guard let item else { return }
         item.loadTransferable(type: Data.self) { result in
             if case .success(let data) = result, let d = data, let ui = UIImage(data: d) {
-                DispatchQueue.main.async {
-                    store.photo = ui
-                    calMode = false; calPts = []; annoMode = false
-                    // 若用户在「设计输入」填了非默认板厚，默认带入照片评级
-                    if store.vision.plateThicknessMm == 12 && store.design.plateThicknessMm != 12 {
-                        store.vision.plateThicknessMm = store.design.plateThicknessMm
-                    }
-                    autoAnnotate(image: ui)
-                }
+                DispatchQueue.main.async { applyNewPhoto(ui) }
             }
         }
+    }
+
+    /// 相机拍摄 / 相册选择的照片到达后的统一处理：写入 store、重置模式、触发自动识别
+    private func applyNewPhoto(_ ui: UIImage) {
+        store.photo = ui
+        calMode = false; calPts = []; annoMode = false
+        // 若用户在「设计输入」填了非默认板厚，默认带入照片评级
+        if store.vision.plateThicknessMm == 12 && store.design.plateThicknessMm != 12 {
+            store.vision.plateThicknessMm = store.design.plateThicknessMm
+        }
+        autoAnnotate(image: ui)
     }
 
     /// 照片载入后自动检测缺陷区域，标注位置 + 尺寸（bbox + location），并按当前板厚做 ISO 5817 评级
     private func autoAnnotate(image: UIImage) {
         // 焊缝区域闸门：未框选焊缝时不自动识别，避免把非焊缝区域（高光/纹理）误报为缺陷
-        guard let roi = store.vision.weldSeamROI else {
+        let rois = store.vision.weldSeamROIs
+        guard !rois.isEmpty else {
             store.vision.imperfections.removeAll { $0.bbox != nil }
             store.autoState = "未框选焊缝区域：已跳过自动识别，避免把非焊缝区域误报为缺陷。" +
-                "点照片上的「🎯 框选焊缝」拖拽出焊缝范围，或在 🎥 实时扫描中框选后捕获。"
+                "点照片上的「🎯 框选焊缝」拖拽出焊缝范围（可框多处），或在 🎥 实时扫描中框选后捕获。"
             return
         }
-        // 阶段2：优先 Core ML 实例分割，未加载模型时自动回退 CV 规则（仅保留 roi 内缺陷）
-        let detects = MLDefectDetector.detect(in: image, roi: roi)
+        // 阶段2：优先 Core ML 实例分割，未加载模型时自动回退 CV 规则。
+        // 多处框选：逐区域检测后合并（各区域独立判定，中心落在任一框内即保留）。
+        var detects: [DetectedDefect] = []
+        for r in rois {
+            detects += MLDefectDetector.detect(in: image, roi: r)
+        }
         // 清掉上一张照片留下的自动框（保留手动添加的缺陷）
         store.vision.imperfections.removeAll { $0.bbox != nil }
         let ppm = store.photoPxPerMm
@@ -741,9 +778,9 @@ struct AnnotationPhotoView: View {
     @Binding var calPts: [CGPoint]
     let pxPerMm: Double?
     var onCalTap: (CGPoint) -> Void = { _ in }
-    // 焊缝区域(ROI)框选
+    // 焊缝区域(ROI)框选：多处框选（数组），检测只在任一区域内生效
     @Binding var roiMode: Bool
-    @Binding var weldSeamROI: CGRect?
+    @Binding var weldSeamROIs: [CGRect]
     @State private var roiDragStart: CGPoint? = nil
     @State private var roiDragCurrent: CGPoint? = nil
 
@@ -815,8 +852,8 @@ struct AnnotationPhotoView: View {
                         .position(x: (ax + bx) / 2, y: (ay + by) / 2 - 12)
                 }
 
-                // 焊缝区域(ROI)叠层：已提交（绿虚线）+ 拖拽中（绿实线）
-                if let r = weldSeamROI {
+                // 焊缝区域(ROI)叠层：已提交（绿虚线，支持多处）+ 拖拽中（绿实线）
+                ForEach(Array(weldSeamROIs.enumerated()), id: \.offset) { ri, r in
                     let rs = CGRect(x: rect.minX + r.minX * rect.width,
                                     y: rect.minY + r.minY * rect.height,
                                     width: r.width * rect.width, height: r.height * rect.height)
@@ -824,7 +861,7 @@ struct AnnotationPhotoView: View {
                         .stroke(Color.green, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
                         .frame(width: rs.width, height: rs.height)
                         .position(x: rs.midX, y: rs.midY)
-                    Text("焊缝区域")
+                    Text("焊缝#\(ri + 1)")
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 5).padding(.vertical, 2)
@@ -880,7 +917,7 @@ struct AnnotationPhotoView: View {
                                     y: min(max(0, (v.location.y - rect.minY) / rect.height), 1))
                     let rr = CGRect(x: min(s0.x, n1.x), y: min(s0.y, n1.y),
                                     width: abs(n1.x - s0.x), height: abs(n1.y - s0.y))
-                    if rr.width > 0.02, rr.height > 0.02 { weldSeamROI = rr }
+                    if rr.width > 0.02, rr.height > 0.02 { weldSeamROIs.append(rr) }
                     roiDragStart = nil; roiDragCurrent = nil
                 } : nil)
         }
@@ -1030,5 +1067,39 @@ struct HistorySheet: View {
             }
         }
         .preferredColorScheme(.dark)
+    }
+}
+// MARK: - 系统相机拍照（UIImagePickerController 封装，供"拍照"按钮调起）
+struct SystemCameraPicker: UIViewControllerRepresentable {
+    var onImage: (UIImage) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let c = UIImagePickerController()
+        // 无相机设备（极端情况）降级为相册，避免 sourceType 崩溃
+        c.sourceType = UIImagePickerController.isSourceTypeAvailable(.camera) ? .camera : .photoLibrary
+        c.delegate = context.coordinator
+        return c
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: SystemCameraPicker
+        init(_ parent: SystemCameraPicker) { self.parent = parent }
+
+        func imagePickerController(_ picker: UIImagePickerController,
+                                   didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            if let img = info[.originalImage] as? UIImage {
+                parent.onImage(img)
+            }
+            parent.dismiss()
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            parent.dismiss()
+        }
     }
 }

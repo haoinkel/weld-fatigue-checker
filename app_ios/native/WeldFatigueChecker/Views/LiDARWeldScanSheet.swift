@@ -377,7 +377,7 @@ struct LiDARWeldScanSheet: View {
                         let depthPB = WeldScanCoordinator.depthMapMeters(depthData)
                         let intr = frame.camera.intrinsics
                         let photoDets = MLDefectDetector.detect(in: ui, maxCount: 16,
-                                                               roi: store.vision.weldSeamROI,
+                                                               roi: store.vision.weldSeamROIs.first,
                                                                depth: depthPB, intrinsics: intr)
                         for d in photoDets {
                             let mm = d.metric.map { $0.primaryMm(type: d.type) }
