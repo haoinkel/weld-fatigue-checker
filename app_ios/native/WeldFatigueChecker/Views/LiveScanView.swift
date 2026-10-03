@@ -32,20 +32,17 @@ struct LiveScanView: View {
     @State private var roiCurrent: CGPoint?
 
     var body: some View {
-        // 结构性防呆（真机实证：全屏 ZStack 叠加 + VStack/Spacer 夹心布局，真机上可能把
-        // 顶栏/底栏挤出可视区 → "看不到返回键、无法返回"）。改为【上-中-下三段 VStack】：
-        // 顶栏(退出)与底栏(控制面板)由布局系统保证永远在安全区内、不可能出屏；
-        // 相机画面只占中间弹性区；框选手势只挂中间相机区，与按钮无层级冲突。
-        VStack(spacing: 0) {
-            topBar
+        // 结构性防呆（真机二次实证：三段 VStack 里相机层会参与高度协商，把顶栏/底栏挤出
+        // 屏幕外 → "只剩相机画面，啥按键都没有"）。改用【safeAreaInset 框架级机制】：
+        // 顶栏/底栏不参与 VStack 布局协商，由系统保证永远贴在安全区顶/底、必定可见；
+        // 相机层只占顶底之间的剩余区域，GeometryReader 坐标随之天然正确。
+        ZStack {
+            Color.black.ignoresSafeArea()
             cameraLayer
-            bottomPanel
         }
-        .background(Color.black.ignoresSafeArea())
+        .safeAreaInset(edge: .top, spacing: 0) { topBar }
+        .safeAreaInset(edge: .bottom, spacing: 0) { bottomPanel }
         .statusBarHidden(true)
-        // 问题3加固：退出/返回键钉在根视图 overlay 最上层，不参与 VStack 布局分配——
-        // 无论中间相机区/底栏如何伸缩，该键永远可见可点（真机“无返回无退出”的终极保险）。
-        .overlay(alignment: .topLeading) { floatingExitButton }
         .onAppear {
             scanner.start()
             // 沿用之前已框选的焊缝区域（若用户已在照片或上次扫描中框选过）
@@ -60,10 +57,17 @@ struct LiveScanView: View {
         }
     }
 
-    // MARK: - 顶栏（标题/FPS；退出键已上移为根视图浮动钉死，见 floatingExitButton）
+    // MARK: - 顶栏（对齐用户基线图：退出按钮 + 标题 + FPS，黑半透明圆角条）
     private var topBar: some View {
-        HStack {
-            Color.clear.frame(width: 64, height: 34)   // 给浮动退出键占位，标题保持居中
+        HStack(spacing: 10) {
+            Button(action: { dismiss() }) {
+                Label("退出", systemImage: "xmark.circle.fill")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10).padding(.vertical, 6)
+                    .background(Color.white.opacity(0.14), in: Capsule())
+            }
+            .accessibilityLabel("退出实时扫描")
             Spacer()
             VStack(spacing: 2) {
                 Text("🎥 实时焊缝缺陷扫描")
@@ -74,37 +78,17 @@ struct LiveScanView: View {
                     Text("\(scanner.fps) FPS · \(MLDefectDetector.engineName)")
                         .font(.caption2).foregroundStyle(.white.opacity(0.85))
                 }
-                // 显式提示已沿用的框选：让用户明确知道焊缝框已带入、未丢失
                 if !scanner.rois.isEmpty {
-                    Text("已框选 \(scanner.rois.count) 处焊缝 · 检测仅在框内")
+                    Text("已框选 \(scanner.rois.count) 处焊缝")
                         .font(.caption2).foregroundStyle(.yellow)
                 }
-                // 构建版本戳：真机验收时一眼判定侧载的是新包还是旧 artifact
-                Text("Build \(BuildInfo.gitSHA)")
-                    .font(.caption2).foregroundStyle(.white.opacity(0.55))
             }
             Spacer()
-            Color.clear.frame(width: 64, height: 34)   // 与退出按钮等宽占位，标题保持居中
+            Color.clear.frame(width: 64, height: 30)   // 与退出按钮等宽占位，标题保持居中
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(Color.black.opacity(0.55))
-    }
-
-    // 问题3：浮动退出/返回键——overlay 钉在根视图左上，永远在最上层、永远可点。
-    // dismiss() 同时承担“返回上一页(外观检查)”与“退出实时扫描”两个语义。
-    private var floatingExitButton: some View {
-        Button(action: { dismiss() }) {
-            Label("退出", systemImage: "xmark.circle.fill")
-                .font(.subheadline.bold())
-                .foregroundStyle(.white)
-                .padding(.horizontal, 12).padding(.vertical, 8)
-                .background(Color.black.opacity(0.65), in: Capsule())
-                .overlay(Capsule().stroke(Color.white.opacity(0.9), lineWidth: 1))
-        }
-        .accessibilityLabel("退出实时扫描")
-        .padding(.leading, 12)
-        .padding(.top, 8)
     }
 
     // MARK: - 中部：相机画面 + ROI/缺陷叠层（aspectFill 映射基于本区域）
@@ -149,23 +133,6 @@ struct LiveScanView: View {
                         .padding(.horizontal, 5).padding(.vertical, 2)
                         .background(Color.yellow.opacity(0.9), in: RoundedRectangle(cornerRadius: 5))
                         .position(x: rs.midX, y: max(offY + 12, rs.minY - 10))
-                }
-
-                // 问题3：未框选时常显“框选区域”虚线占位框——框选功能的可见存在感，
-                // 与验证基线（用户基准截图）一致；拖拽出框后自动消失，替换为“焊缝#N”实框。
-                if scanner.rois.isEmpty && roiStart == nil {
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(Color.yellow, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
-                        .frame(width: vw * 0.28, height: vh * 0.30)
-                        .overlay(alignment: .top) {
-                            Text("框选区域")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundStyle(.black)
-                                .padding(.horizontal, 5).padding(.vertical, 2)
-                                .background(Color.yellow.opacity(0.9), in: RoundedRectangle(cornerRadius: 5))
-                                .offset(y: -10)
-                        }
-                        .position(x: vw / 2, y: vh / 2)
                 }
 
                 // 拖拽中的框（实线黄）
@@ -232,17 +199,9 @@ struct LiveScanView: View {
         }
     }
 
-    // MARK: - 底部控制面板
+    // MARK: - 底部控制面板（对齐用户基线图：框选焊缝/清除 → AI开关 → 捕获快照大按钮 → 小字）
     private var bottomPanel: some View {
-        VStack(spacing: 10) {
-            // 构建版本戳（醒目）：装包即验版本——真机底栏顶部看到 "BUILD: 9e7dd91" 才是新包，
-            // 没这行 / 显示 dev 即说明侧载的是历史旧 artifact。
-            Text("BUILD: \(BuildInfo.gitSHA)")
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
-                .foregroundStyle(.black)
-                .padding(.horizontal, 10).padding(.vertical, 4)
-                .background(Theme.cyan, in: RoundedRectangle(cornerRadius: 6))
-
+        VStack(spacing: 12) {
             if !captureMsg.isEmpty {
                 Text(captureMsg)
                     .font(.caption).foregroundStyle(.white)
@@ -250,18 +209,19 @@ struct LiveScanView: View {
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
             }
 
-            // 焊缝区域闸门（ROI）
-            HStack {
+            // 第一行：焊缝区域闸门（ROI）——框选焊缝 / 清除
+            HStack(spacing: 12) {
                 Button {
                     if roiDrawing { roiDrawing = false; roiStart = nil; roiCurrent = nil }
                     else { roiDrawing = true }
                 } label: {
                     Label(roiDrawing ? "框选中…拖拽" : "框选焊缝", systemImage: "viewfinder")
-                        .font(.subheadline)
-                        .padding(.horizontal, 8).padding(.vertical, 6)
-                        .background(roiDrawing ? Color.yellow : Theme.cyan.opacity(0.12),
-                                     in: RoundedRectangle(cornerRadius: 8))
-                        .foregroundStyle(roiDrawing ? .black : Theme.cyan)
+                        .font(.subheadline.bold())
+                        .padding(.horizontal, 10).padding(.vertical, 7)
+                        .background(roiDrawing ? Color.yellow.opacity(0.9) : Color.white.opacity(0.10),
+                                     in: Capsule())
+                        .foregroundStyle(roiDrawing ? .black : .cyan)
+                        .overlay(Capsule().stroke(Color.cyan.opacity(roiDrawing ? 0 : 0.7), lineWidth: 1))
                 }
                 if !scanner.rois.isEmpty {
                     Button {
@@ -269,28 +229,21 @@ struct LiveScanView: View {
                         store.vision.weldSeamROIs = []
                     } label: {
                         Label("清除", systemImage: "xmark")
-                            .font(.subheadline)
-                            .padding(.horizontal, 8).padding(.vertical, 6)
-                            .background(Color.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                            .font(.subheadline.bold())
+                            .padding(.horizontal, 10).padding(.vertical, 7)
+                            .background(Color.red.opacity(0.14), in: Capsule())
                             .foregroundStyle(.red)
                     }
                 }
                 Spacer()
             }
 
-            if scanner.rois.isEmpty {
-                Text("未框选焊缝区域：暂不检测任何缺陷（避免把非焊缝物体误报为余高）。点「框选焊缝」后在画面上拖拽出焊缝范围；可连续框选多处，每拖一次追加一个区域。")
-                    .font(.caption2).foregroundStyle(.orange)
-                    .padding(6)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
-            }
-
-            // 引擎开关 + 实时缺陷数
+            // 第二行：引擎开关 + 状态
             HStack {
                 Image(systemName: "brain").foregroundStyle(.purple)
                 Toggle("AI 模型识别", isOn: $useMLModel)
                     .font(.subheadline)
+                    .tint(.cyan)
                 Spacer()
                 Text(MLDefectDetector.isModelAvailable ? "模型已加载" : "CV 回退")
                     .font(.caption2)
@@ -298,41 +251,25 @@ struct LiveScanView: View {
             }
             .onChange(of: useMLModel) { _, v in MLDefectDetector.useMLModel = v }
 
-            // 实时缺陷列表（类型 + 像素尺寸；mm 评级需在捕获后标定）
-            if !scanner.detections.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(Array(scanner.detections.enumerated()), id: \.offset) { i, d in
-                            let longPx = Int(defectMeasurePx(type: d.type, pixelSize: d.pixelSize))
-                            Text("#\(i+1) \(AnnotationMarker.shortLabel(d.type)) \(longPx)px")
-                                .font(.caption2).foregroundStyle(.black)
-                                .padding(.horizontal, 8).padding(.vertical, 4)
-                                .background(Theme.defect.opacity(0.85), in: Capsule())
-                        }
-                    }
-                }
-                .frame(height: 28)
-            }
-
-            // 捕获按钮
+            // 捕获按钮（大胶囊，蓝渐变）
             Button(action: captureCurrent) {
                 Label("捕获快照", systemImage: "camera.circle.fill")
-                    .font(.title2.bold())
-                    .frame(maxWidth: .infinity).padding(.vertical, 14)
+                    .font(.title3.bold())
+                    .frame(maxWidth: .infinity).padding(.vertical, 13)
                     .background(LinearGradient(colors: [Theme.cyan, Theme.blue],
                                                startPoint: .leading, endPoint: .trailing),
                                  in: Capsule())
                     .foregroundStyle(.black)
-                    .shadow(color: Theme.cyan.opacity(0.4), radius: 10, y: 0)
+                    .shadow(color: Theme.cyan.opacity(0.35), radius: 8, y: 0)
             }
 
-            Text("捕获后回到「外观检查」，可用 📏 标定比例 或 LiDAR 点测得到真实 mm 并自动评级。")
-                .font(.caption2).foregroundStyle(.white.opacity(0.8))
+            Text("捕获后回到「外观检查」，可用 📏 标定比例或 LiDAR 点测得到真实 mm 并自动评级 · BUILD \(BuildInfo.gitSHA)")
+                .font(.caption2).foregroundStyle(.white.opacity(0.75))
         }
-        .padding(12)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 14)
+        .padding(.top, 10)
+        .padding(.bottom, 6)
+        .background(Color.black.opacity(0.72))
     }
 
     // aspectFill：图像按 cover 填满视图时的显示尺寸与居中偏移
