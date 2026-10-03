@@ -650,7 +650,7 @@ struct PhotoCheckView: View {
             let full = MLDefectDetector.detect(in: image, maxCount: 8, roi: nil)
             if !full.isEmpty {
                 let kinds = Dictionary(grouping: full, by: { $0.type })
-                    .map { "\(AnnotationMarker.shortLabel($0.key))×\($0.count)" }
+                    .map { "\(AnnotationMarker.shortLabel($0.key))×\($0.value.count)" }
                     .sorted().joined(separator: "、")
                 fullImgHint = "全图对照：模型在全图发现 \(full.count) 处疑似缺陷（\(kinds)），" +
                     "但中心未落在框选区域内。请检查框选范围是否完整盖住焊缝缺陷（可追加框选，松手即自动重识别）。"
