@@ -338,7 +338,7 @@ struct PhotoCheckView: View {
                                     .foregroundStyle(roiMode ? .black : Theme.cyan)
                                 }
                                 .accessibilityLabel("框选焊缝区域")
-                                .accessibilityHint("在照片上拖拽框住焊缝范围，可连续框选多处，检测只在框内生效")
+                                .accessibilityHint("在照片上从左上向右下拖拽框住焊缝范围，可连续框选多处，检测只在框内生效")
                                 if !store.vision.weldSeamROIs.isEmpty {
                                     Button {
                                         store.vision.weldSeamROIs = []
@@ -428,8 +428,8 @@ struct PhotoCheckView: View {
                                     .font(.caption).foregroundStyle(.secondary)
                             } else if roiMode {
                                 Text(store.vision.weldSeamROIs.isEmpty
-                                     ? "框选焊缝：在照片上拖拽出一个矩形框住焊缝范围。"
-                                     : "已框选 \(store.vision.weldSeamROIs.count) 处焊缝区域，检测只在框内生效；可继续拖拽追加更多区域，或用「📏 标定比例」/LiDAR 量测得到 mm 后评级。")
+                                     ? "框选焊缝：在照片上从左上向右下拖拽出一个矩形框住焊缝范围（可连续框选多处）。"
+                                     : "已框选 \(store.vision.weldSeamROIs.count) 处焊缝区域，检测只在框内生效；可继续从左上向右下拖拽追加，或用「📏 标定比例」/LiDAR 量测得到 mm 后评级。")
                                     .font(.caption).foregroundStyle(.secondary)
             }
                         }
@@ -879,6 +879,16 @@ struct AnnotationPhotoView: View {
     @Binding var weldSeamROIs: [CGRect]
     @State private var roiDragStart: CGPoint? = nil
     @State private var roiDragCurrent: CGPoint? = nil
+    @State private var roiHint: String = ""   // 框选方向/多选反馈
+
+    /// 短暂提示：2.5 秒后若未被新提示覆盖则自动清除
+    private func roiFlash(_ msg: String) {
+        roiHint = msg
+        let token = msg
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            if roiHint == token { roiHint = "" }
+        }
+    }
 
     var body: some View {
         GeometryReader { geo in
@@ -965,13 +975,23 @@ struct AnnotationPhotoView: View {
                         .position(x: rs.midX, y: max(rect.minY + 12, rs.minY - 10))
                 }
                 if let s = roiDragStart, let c = roiDragCurrent {
+                    // 方向约束（需求2）：只允许 左上 → 右下
+                    let downRight = c.x >= s.x && c.y >= s.y
                     let n0 = CGPoint(x: min(s.x, c.x), y: min(s.y, c.y))
                     let n1 = CGPoint(x: max(s.x, c.x), y: max(s.y, c.y))
                     let rs = CGRect(x: n0.x, y: n0.y, width: n1.x - n0.x, height: n1.y - n0.y)
                     Rectangle()
-                        .stroke(Color.green, lineWidth: 2)
+                        .stroke(downRight ? Color.green : Color.red, lineWidth: 2)
                         .frame(width: rs.width, height: rs.height)
                         .position(x: rs.midX, y: rs.midY)
+                    if !downRight {
+                        Text("请从左上向右下拖拽框选")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6).padding(.vertical, 3)
+                            .background(Color.red.opacity(0.85), in: RoundedRectangle(cornerRadius: 6))
+                            .position(x: rs.midX, y: max(rect.minY + 12, rs.minY - 12))
+                    }
                 }
             }
             .contentShape(Rectangle())
@@ -1011,11 +1031,30 @@ struct AnnotationPhotoView: View {
                                      y: min(max(0, (s.y - rect.minY) / rect.height), 1))
                     let n1 = CGPoint(x: min(max(0, (v.location.x - rect.minX) / rect.width), 1),
                                     y: min(max(0, (v.location.y - rect.minY) / rect.height), 1))
-                    let rr = CGRect(x: min(s0.x, n1.x), y: min(s0.y, n1.y),
-                                    width: abs(n1.x - s0.x), height: abs(n1.y - s0.y))
-                    if rr.width > 0.02, rr.height > 0.02 { weldSeamROIs.append(rr) }
                     roiDragStart = nil; roiDragCurrent = nil
+                    // 方向约束（需求2）：只允许 左上 → 右下 框选
+                    guard n1.x >= s0.x, n1.y >= s0.y else {
+                        roiFlash("方向错误：请始终从左上向右下拖拽框选焊缝")
+                        return   // roiMode 保持开启，可立即重拖（已支持连续框选多处）
+                    }
+                    let rr = CGRect(x: s0.x, y: s0.y, width: n1.x - s0.x, height: n1.y - s0.y)
+                    if rr.width > 0.02, rr.height > 0.02 {
+                        weldSeamROIs.append(rr)
+                        roiFlash("已框选 \(weldSeamROIs.count) 处，可继续框选；再点「🎯 框选焊缝」关闭")
+                    } else {
+                        roiFlash("框选区域过小，请重新从左上向右下拖拽")
+                    }
                 } : nil)
+            // 框选方向/多选提示（覆盖在画布顶部）
+            .overlay(alignment: .top) {
+                if !roiHint.isEmpty {
+                    Text(roiHint)
+                        .font(.caption).foregroundStyle(.white)
+                        .padding(8)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+                        .padding(.top, 8)
+                }
+            }
         }
     }
 

@@ -30,6 +30,16 @@ struct LiveScanView: View {
     @State private var roiDrawing: Bool = false
     @State private var roiStart: CGPoint?
     @State private var roiCurrent: CGPoint?
+    @State private var roiHint: String = ""   // 框选方向/多选反馈（短暂提示）
+
+    /// 短暂提示：2.5 秒后若未被新提示覆盖则自动清除
+    private func flashRoi(_ msg: String) {
+        roiHint = msg
+        let token = msg
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            if roiHint == token { roiHint = "" }
+        }
+    }
 
     var body: some View {
         // 结构性防呆（真机五轮实证后的最终结论）：
@@ -144,17 +154,26 @@ struct LiveScanView: View {
                         .position(x: rs.midX, y: max(offY + 12, rs.minY - 10))
                 }
 
-                // 拖拽中的框（实线黄）
+                // 拖拽中的框：合法方向（左上→右下）黄色实线，非法方向红色提示
                 if let s = roiStart, let c = roiCurrent {
                     let n0 = Self.normOf(s, offX: offX, offY: offY, iwP: iwP, ihP: ihP)
                     let n1 = Self.normOf(c, offX: offX, offY: offY, iwP: iwP, ihP: ihP)
+                    let downRight = n1.x >= n0.x && n1.y >= n0.y
                     let rect = CGRect(x: min(n0.x, n1.x), y: min(n0.y, n1.y),
                                       width: abs(n1.x - n0.x), height: abs(n1.y - n0.y))
                     let rs = Self.screenOf(rect, offX: offX, offY: offY, iwP: iwP, ihP: ihP)
                     Rectangle()
-                        .stroke(Color.yellow, lineWidth: 2)
+                        .stroke(downRight ? Color.yellow : Color.red, lineWidth: 2)
                         .frame(width: rs.width, height: rs.height)
                         .position(x: rs.midX, y: rs.midY)
+                    if !downRight {
+                        Text("请从左上向右下拖拽框选")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6).padding(.vertical, 3)
+                            .background(Color.red.opacity(0.85), in: RoundedRectangle(cornerRadius: 6))
+                            .position(x: rs.midX, y: max(offY + 12, rs.minY - 12))
+                    }
                 }
 
                 // 实时缺陷框（仅在 roi 内）
@@ -188,22 +207,29 @@ struct LiveScanView: View {
             .gesture(DragGesture(minimumDistance: 0)
                 .onChanged { v in
                     guard roiDrawing else { return }
-                    if roiStart == nil { roiStart = v.location }
+                    if roiStart == nil { roiStart = v.location; roiHint = "" }   // 新一次拖拽，清掉上一条提示
                     roiCurrent = v.location
                 }
                 .onEnded { v in
                     guard roiDrawing, let s = roiStart else { roiStart = nil; roiCurrent = nil; return }
                     let n0 = Self.normOf(s, offX: offX, offY: offY, iwP: iwP, ihP: ihP)
                     let n1 = Self.normOf(v.location, offX: offX, offY: offY, iwP: iwP, ihP: ihP)
-                    let rect = CGRect(x: min(n0.x, n1.x), y: min(n0.y, n1.y),
-                                      width: abs(n1.x - n0.x), height: abs(n1.y - n0.y))
+                    roiStart = nil; roiCurrent = nil
+                    // 方向约束（需求2）：只允许 左上 → 右下 框选
+                    guard n1.x >= n0.x, n1.y >= n0.y else {
+                        flashRoi("方向错误：请始终从左上向右下拖拽框选焊缝")
+                        return   // 多点框选：保持 roiDrawing，便于立即重拖
+                    }
+                    let rect = CGRect(x: n0.x, y: n0.y, width: n1.x - n0.x, height: n1.y - n0.y)
                     if rect.width > 0.02, rect.height > 0.02 {   // 太小视为误触
-                        // 多处框选：新框追加（可连续框多条焊缝/多个区域）
+                        // 多处框选（需求1）：新框追加，可连续框多条焊缝/多个区域
                         scanner.rois.append(rect)
                         store.vision.weldSeamROIs = scanner.rois
+                        flashRoi("已框选 \(scanner.rois.count) 处，可继续框选；点「完成框选」结束")
+                    } else {
+                        flashRoi("框选区域过小，请重新从左上向右下拖拽")
                     }
-                    roiStart = nil; roiCurrent = nil
-                    roiDrawing = false
+                    // 注意：不复位 roiDrawing —— 连续框选多条焊缝，由「完成框选」按钮结束
                 })
         }
     }
@@ -218,13 +244,19 @@ struct LiveScanView: View {
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
             }
 
-            // 第一行：焊缝区域闸门（ROI）——框选焊缝 / 清除
+            // 第一行：焊缝区域闸门（ROI）——框选焊缝 / 撤销 / 清除
             HStack(spacing: 12) {
                 Button {
-                    if roiDrawing { roiDrawing = false; roiStart = nil; roiCurrent = nil }
-                    else { roiDrawing = true }
+                    if roiDrawing {            // 结束多点框选
+                        roiDrawing = false
+                        roiStart = nil; roiCurrent = nil
+                        roiHint = ""
+                    } else {                   // 进入多点框选
+                        roiDrawing = true
+                        flashRoi("从左上向右下拖拽框选焊缝：可连续框多条，点「完成框选」结束")
+                    }
                 } label: {
-                    Label(roiDrawing ? "框选中…拖拽" : "框选焊缝", systemImage: "viewfinder")
+                    Label(roiDrawing ? "完成框选" : "框选焊缝", systemImage: "viewfinder")
                         .font(.subheadline.bold())
                         .padding(.horizontal, 10).padding(.vertical, 7)
                         .background(roiDrawing ? Color.yellow.opacity(0.9) : Color.white.opacity(0.10),
@@ -232,10 +264,23 @@ struct LiveScanView: View {
                         .foregroundStyle(roiDrawing ? .black : .cyan)
                         .overlay(Capsule().stroke(Color.cyan.opacity(roiDrawing ? 0 : 0.7), lineWidth: 1))
                 }
+                .accessibilityHint("进入后从左上向右下拖拽可连续框选多条焊缝，再次点击结束框选")
                 if !scanner.rois.isEmpty {
+                    Button {
+                        scanner.rois.removeLast()
+                        store.vision.weldSeamROIs = scanner.rois
+                        flashRoi(scanner.rois.isEmpty ? "" : "已撤销最近一处，剩 \(scanner.rois.count) 处")
+                    } label: {
+                        Label("撤销", systemImage: "arrow.uturn.backward")
+                            .font(.subheadline.bold())
+                            .padding(.horizontal, 10).padding(.vertical, 7)
+                            .background(Color.white.opacity(0.10), in: Capsule())
+                            .foregroundStyle(.orange)
+                    }
                     Button {
                         scanner.rois = []
                         store.vision.weldSeamROIs = []
+                        roiHint = ""
                     } label: {
                         Label("清除", systemImage: "xmark")
                             .font(.subheadline.bold())
@@ -245,6 +290,15 @@ struct LiveScanView: View {
                     }
                 }
                 Spacer()
+            }
+
+            // 框选方向/多选提示
+            if !roiHint.isEmpty {
+                Text(roiHint)
+                    .font(.caption2).foregroundStyle(.white)
+                    .padding(6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
             }
 
             // 第二行：引擎开关 + 状态
