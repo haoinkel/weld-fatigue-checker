@@ -79,6 +79,9 @@ struct LiveScanView: View {
                     Text("已框选 \(scanner.rois.count) 处焊缝 · 检测仅在框内")
                         .font(.caption2).foregroundStyle(.yellow)
                 }
+                // 构建版本戳：真机验收时一眼判定侧载的是新包还是旧 artifact
+                Text("Build \(BuildInfo.gitSHA)")
+                    .font(.caption2).foregroundStyle(.white.opacity(0.55))
             }
             Spacer()
             Color.clear.frame(width: 64, height: 34)   // 与退出按钮等宽占位，标题保持居中
