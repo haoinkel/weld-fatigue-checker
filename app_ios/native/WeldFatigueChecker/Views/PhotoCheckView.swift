@@ -647,7 +647,7 @@ struct PhotoCheckView: View {
         // 全图检出的缺陷不进缺陷列表（ROI 闸门语义不变），仅作提示。
         var fullImgHint = ""
         if detects.isEmpty {
-            let full = MLDefectDetector.detect(in: image, roi: nil, maxCount: 8)
+            let full = MLDefectDetector.detect(in: image, maxCount: 8, roi: nil)
             if !full.isEmpty {
                 let kinds = Dictionary(grouping: full, by: { $0.type })
                     .map { "\(AnnotationMarker.shortLabel($0.key))×\($0.count)" }
