@@ -497,7 +497,16 @@ struct PhotoCheckView: View {
                             isLocated: imp.location != nil,
                             detailSelected: selectedImpIndex == i,
                             onMeasureTap: { liDarTargetIndex = i },
-                            onLocateTap: { annoTargetIndex = (annoTargetIndex == i ? -1 : i) },
+                            onLocateTap: {
+                                if annoTargetIndex == i {
+                                    annoTargetIndex = -1
+                                } else {
+                                    annoTargetIndex = i
+                                    // 点 📍 直接进入图上标注模式：此前只改索引、无任何可见反馈，
+                                    // 用户点完红点没有下一步指引。与提示文案「先点缺陷行的 📍 再点照片」对齐。
+                                    annoMode = true
+                                }
+                            },
                             onDelete: {
                                 store.removeImperfection(at: i)
                                 if selectedImpIndex == i { selectedImpIndex = nil }
@@ -710,30 +719,86 @@ struct ImperfectionRow: View {
     let onLocateTap: () -> Void
     let onDelete: () -> Void
 
+    // MARK: 安全访问层
+    // 真机（iPadOS 26）曾出现"点红色定位点闪退"。列表在删除/重新识别时收缩的瞬间，
+    // 行内 `$store.vision.imperfections[index]` 直接下标绑定可能在事务中被越界求值 → 崩溃。
+    // 全部改走带 indices.contains 守卫的安全绑定/只读访问，从结构上杜绝越界闪退类。
+
+    private var typeBinding: Binding<String> {
+        Binding<String>(
+            get: {
+                guard store.vision.imperfections.indices.contains(index) else { return DefectTypes.all[0].tag }
+                let t = store.vision.imperfections[index].type
+                // 兜底：存量数据若含不在选项内的类型，给 Picker 一个合法 tag，避免无匹配异常
+                return DefectTypes.all.contains { $0.tag == t } ? t : DefectTypes.all[0].tag
+            },
+            set: {
+                guard store.vision.imperfections.indices.contains(index) else { return }
+                store.vision.imperfections[index].type = $0
+                regradeRow()
+            }
+        )
+    }
+
+    private var sizeBinding: Binding<Double?> {
+        Binding<Double?>(
+            get: { store.vision.imperfections.indices.contains(index) ? store.vision.imperfections[index].sizeMm : nil },
+            set: {
+                guard store.vision.imperfections.indices.contains(index) else { return }
+                store.vision.imperfections[index].sizeMm = $0
+                regradeRow()
+            }
+        )
+    }
+
+    private var gradeSafe: String? {
+        store.vision.imperfections.indices.contains(index) ? store.vision.imperfections[index].grade : nil
+    }
+    private var acceptedSafe: Bool? {
+        store.vision.imperfections.indices.contains(index) ? store.vision.imperfections[index].accepted : nil
+    }
+    private var limitTextSafe: String? {
+        store.vision.imperfections.indices.contains(index) ? store.vision.imperfections[index].limitText : nil
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
+            // 第 1 行：缺陷类型（独占一行）。此前类型/尺寸/3 个按钮挤一行，iPad 窄侧栏内
+            // Picker 被压缩成"单字竖排"，缺陷名称不可读（真机截图实证）。
             HStack(spacing: 8) {
-                Picker("类型", selection: $store.vision.imperfections[index].type) {
+                Picker("类型", selection: typeBinding) {
                     ForEach(DefectTypes.all, id: \.tag) { d in
                         Text(d.label).tag(d.tag)
                     }
                 }
-                .frame(maxWidth: .infinity)
-                .onChange(of: store.vision.imperfections[index].type) { _, _ in regradeRow() }
+                .pickerStyle(.menu)
+                .fixedSize(horizontal: true, vertical: false)   // 菜单标签按理想宽度展开，不被压缩
+                .accessibilityLabel("缺陷 \(index + 1) 类型选择")
 
-                TextField("尺寸mm", value: $store.vision.imperfections[index].sizeMm, format: .number)
+                // ISO 5817 等级徽章
+                if gradeSafe != nil {
+                    let ok = acceptedSafe ?? false
+                    Image(systemName: ok ? "checkmark.seal.fill" : "xmark.octagon.fill")
+                        .foregroundStyle(ok ? Theme.ok : Theme.danger)
+                        .help(limitTextSafe ?? "")
+                }
+
+                Spacer()
+
+                Button(action: onDelete) {
+                    Image(systemName: "trash").foregroundStyle(.red)
+                }
+                .accessibilityLabel("删除缺陷 \(index + 1)")
+            }
+
+            // 第 2 行：尺寸输入 + LiDAR 测量 + 图上定位
+            HStack(spacing: 8) {
+                TextField("尺寸mm", value: sizeBinding, format: .number)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 80)
                     .keyboardType(.decimalPad)
-                    .onChange(of: store.vision.imperfections[index].sizeMm) { _, _ in regradeRow() }
 
-                // ISO 5817 等级徽章
-                if let g = store.vision.imperfections[index].grade {
-                    let ok = store.vision.imperfections[index].accepted ?? false
-                    Image(systemName: ok ? "checkmark.seal.fill" : "xmark.octagon.fill")
-                        .foregroundStyle(ok ? Theme.ok : Theme.danger)
-                        .help(store.vision.imperfections[index].limitText ?? "")
-                }
+                Spacer()
 
                 // LiDAR 测量按钮
                 Button(action: onMeasureTap) {
@@ -756,16 +821,11 @@ struct ImperfectionRow: View {
                 }
                 .accessibilityLabel("在照片上标注位置")
                 .help("开启「图上标注模式」后，点照片即可把此缺陷定位到该位置")
-
-                Button(action: onDelete) {
-                    Image(systemName: "trash").foregroundStyle(.red)
-                }
             }
 
             // 评级说明（仅在有评级结果时显示）
-            if let g = store.vision.imperfections[index].grade,
-               let lt = store.vision.imperfections[index].limitText {
-                let ok = store.vision.imperfections[index].accepted ?? false
+            if let g = gradeSafe, let lt = limitTextSafe {
+                let ok = acceptedSafe ?? false
                 Text("ISO 5817 \(g)： \(lt)")
                     .font(.caption2)
                     .foregroundStyle(ok ? Theme.ok : Theme.danger)
@@ -992,6 +1052,9 @@ struct AnnotationMarker: View {
         .overlay(alignment: .bottom) {
             let txt = Self.shortLabel(type) + (sizeMm.map { "  \(Int($0))mm" } ?? "")
             Text(txt)
+                // 关键：overlay 会向内容提案底视图（26pt 圆点）的尺寸，长名称被截成"···"
+                // （真机截图实证）。fixedSize 让文本按理想宽度展开，不再被提案宽度截断。
+                .fixedSize(horizontal: true, vertical: false)
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 5).padding(.vertical, 2)
@@ -1008,6 +1071,8 @@ struct AnnotationMarker: View {
         case "overlap": return "焊瘤"
         case "crack": return "裂纹"
         case "unfused": return "未熔合"
+        case "excess_weld_metal": return "余高"
+        case "linear_misalignment": return "错边"
         default: return "缺陷"
         }
     }

@@ -180,6 +180,10 @@ enum DefectTypes {
         ("crack",    "裂纹/弧坑裂纹"),
         ("overlap",  "焊瘤/满溢"),
         ("unfused",  "未熔合"),
+        // LiDAR 剖面分析（WeldProfileAnalyzer）会写入的两类几何缺陷：
+        // 此前不在选项内 → Picker selection 无匹配 tag → 行内类型名显示异常（真机实证）
+        ("excess_weld_metal", "余高过大"),
+        ("linear_misalignment", "错边"),
     ]
     static func label(_ tag: String) -> String {
         all.first(where: { $0.tag == tag })?.label ?? "缺陷"
