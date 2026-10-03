@@ -32,18 +32,17 @@ struct LiveScanView: View {
     @State private var roiCurrent: CGPoint?
 
     var body: some View {
-        // 结构性防呆（真机三度实证）：
-        // ① 三段 VStack + 贪婪相机层 → 顶/底栏被挤出屏幕；
-        // ② 改 safeAreaInset 框架机制 → 在 fullScreenCover 真机环境下仍不呈现顶/底栏。
-        // 改用【overlay 绝对钉位】：相机 ZStack 铺满，topBar/bottomPanel 以 overlay
-        // (alignment:.top/.bottom) 钉在屏幕顶/底最上层。overlay 不参与任何布局协商，
-        // 是 SwiftUI 最可靠的 HUD 模式，必可见；相机层位于其下层不会被遮挡。
-        ZStack {
-            Color.black.ignoresSafeArea()
+        // 结构性防呆（真机五轮实证后的最终结论）：
+        // 顶/底栏"出屏"的病根从来不是容器姿势（VStack/safeAreaInset/overlay 都试过），
+        // 而是 .scaledToFill 的相机 Image 以图像完整原始尺寸参与布局，把容器撑得比屏幕大。
+        // 相机层改为精确 aspectFill 尺寸后（见 cameraLayer），回到最经典的三段 VStack：
+        // 顶栏(退出+标题+FPS) / 相机弹性区 / 底栏(框选+AI开关+捕获)，高度协商必然正常。
+        VStack(spacing: 0) {
+            topBar
             cameraLayer
+            bottomPanel
         }
-        .overlay(alignment: .top) { topBar }
-        .overlay(alignment: .bottom) { bottomPanel }
+        .background(Color.black.ignoresSafeArea())
         .statusBarHidden(true)
         .onAppear {
             scanner.start()
@@ -95,19 +94,27 @@ struct LiveScanView: View {
 
     // MARK: - 中部：相机画面 + ROI/缺陷叠层（aspectFill 映射基于本区域）
     private var cameraLayer: some View {
-        ZStack {
-            if let img = scanner.lastCapturedImage {
-                Image(uiImage: img)
-                    .resizable()
-                    .scaledToFill()
+        GeometryReader { geo in
+            let a = scanner.frameSize.width / max(1, scanner.frameSize.height)   // 图像宽高比
+            let (iwP, ihP, offX, offY) = Self.aspectFill(imageAspect: a,
+                                                          viewW: geo.size.width,
+                                                          viewH: geo.size.height)
+            ZStack {
+                if let img = scanner.lastCapturedImage {
+                    // 治本（真机五轮实证的根因）：禁用 scaledToFill——它按图像完整原始尺寸
+                    // (如 4032x3024) 参与布局，把容器撑得比屏幕大，顶/底栏全被推出屏幕外。
+                    // 改为按叠层同源的 aspectFill 精确尺寸放置：零贪婪，且与缺陷框坐标天然对齐。
+                    Image(uiImage: img)
+                        .resizable()
+                        .frame(width: iwP, height: ihP)
+                        .position(x: offX + iwP / 2, y: offY + ihP / 2)
+                } else {
+                    Text("正在启动相机…（首次约需 1~2 秒）")
+                        .font(.subheadline).foregroundStyle(.white.opacity(0.7))
+                }
                 cameraOverlay
-            } else {
-                Color.black
-                Text("正在启动相机…（首次约需 1~2 秒）")
-                    .font(.subheadline).foregroundStyle(.white.opacity(0.7))
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipped()
     }
 
