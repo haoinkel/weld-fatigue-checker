@@ -235,6 +235,14 @@ struct LiveScanView: View {
     // MARK: - 底部控制面板
     private var bottomPanel: some View {
         VStack(spacing: 10) {
+            // 构建版本戳（醒目）：装包即验版本——真机底栏顶部看到 "BUILD: 9e7dd91" 才是新包，
+            // 没这行 / 显示 dev 即说明侧载的是历史旧 artifact。
+            Text("BUILD: \(BuildInfo.gitSHA)")
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .foregroundStyle(.black)
+                .padding(.horizontal, 10).padding(.vertical, 4)
+                .background(Theme.cyan, in: RoundedRectangle(cornerRadius: 6))
+
             if !captureMsg.isEmpty {
                 Text(captureMsg)
                     .font(.caption).foregroundStyle(.white)
