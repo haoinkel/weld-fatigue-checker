@@ -49,6 +49,12 @@ struct LiveScanView: View {
             scanner.rois = store.vision.weldSeamROIs
         }
         .onDisappear { scanner.stop() }
+        // 防御：首帧到达后再同步一次 roi，避免 onAppear 早于 store 就绪导致框选框不显示
+        .onChange(of: scanner.lastCapturedImage) { _, newImg in
+            if newImg != nil, scanner.rois.isEmpty, !store.vision.weldSeamROIs.isEmpty {
+                scanner.rois = store.vision.weldSeamROIs
+            }
+        }
     }
 
     // MARK: - 顶栏（退出 + 标题/FPS）
@@ -72,6 +78,11 @@ struct LiveScanView: View {
                 } else {
                     Text("\(scanner.fps) FPS · \(MLDefectDetector.engineName)")
                         .font(.caption2).foregroundStyle(.white.opacity(0.85))
+                }
+                // 显式提示已沿用的框选：让用户明确知道焊缝框已带入、未丢失
+                if !scanner.rois.isEmpty {
+                    Text("已框选 \(scanner.rois.count) 处焊缝 · 检测仅在框内")
+                        .font(.caption2).foregroundStyle(.yellow)
                 }
             }
             Spacer()
