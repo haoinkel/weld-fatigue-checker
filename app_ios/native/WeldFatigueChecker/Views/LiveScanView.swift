@@ -32,16 +32,18 @@ struct LiveScanView: View {
     @State private var roiCurrent: CGPoint?
 
     var body: some View {
-        // 结构性防呆（真机二次实证：三段 VStack 里相机层会参与高度协商，把顶栏/底栏挤出
-        // 屏幕外 → "只剩相机画面，啥按键都没有"）。改用【safeAreaInset 框架级机制】：
-        // 顶栏/底栏不参与 VStack 布局协商，由系统保证永远贴在安全区顶/底、必定可见；
-        // 相机层只占顶底之间的剩余区域，GeometryReader 坐标随之天然正确。
+        // 结构性防呆（真机三度实证）：
+        // ① 三段 VStack + 贪婪相机层 → 顶/底栏被挤出屏幕；
+        // ② 改 safeAreaInset 框架机制 → 在 fullScreenCover 真机环境下仍不呈现顶/底栏。
+        // 改用【overlay 绝对钉位】：相机 ZStack 铺满，topBar/bottomPanel 以 overlay
+        // (alignment:.top/.bottom) 钉在屏幕顶/底最上层。overlay 不参与任何布局协商，
+        // 是 SwiftUI 最可靠的 HUD 模式，必可见；相机层位于其下层不会被遮挡。
         ZStack {
             Color.black.ignoresSafeArea()
             cameraLayer
         }
-        .safeAreaInset(edge: .top, spacing: 0) { topBar }
-        .safeAreaInset(edge: .bottom, spacing: 0) { bottomPanel }
+        .overlay(alignment: .top) { topBar }
+        .overlay(alignment: .bottom) { bottomPanel }
         .statusBarHidden(true)
         .onAppear {
             scanner.start()
