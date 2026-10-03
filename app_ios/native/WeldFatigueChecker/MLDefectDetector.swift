@@ -130,6 +130,11 @@ struct MLDefectDetector {
     ///      区域外不报（避免非焊缝物体误报）。nil 表示不限制（调用方负责闸门逻辑）。
     static func detect(in image: UIImage, maxCount: Int = 16, roi: CGRect? = nil,
                        depth: CVPixelBuffer? = nil, intrinsics: matrix_float3x3? = nil) -> [DetectedDefect] {
+        // 方向归一（问题2 伴生修复）：VNImageRequestHandler 只认 CGImage 原始像素方向，
+        // 而 UI 侧（照片画布 / 框选 ROI / bbox 叠层 / 标定）全部按 UIImage.orientation
+        // 转正后的方向绘制。带 EXIF 方向的照片（相机竖拍/相册导入）不转正时，
+        // 推理坐标与显示坐标相差一个旋转 → 框错位、ROI 过滤全错。
+        let upright = Self.uprightImage(image)
         let applyROI: ([DetectedDefect]) -> [DetectedDefect] = { list in
             guard let r = roi else { return list }
             return list.filter { r.contains(CGPoint(x: $0.rect.midX, y: $0.rect.midY)) }
@@ -143,13 +148,38 @@ struct MLDefectDetector {
             out.metric = m
             return out
         }
-        if useMLModel, let url = compiledModelURL,
-           let dets = try? runModel(at: url, image: image, maxCount: maxCount) {
-            diagLock.lock(); _lastUsedML = true; diagLock.unlock()
-            return applyROI(dets).map(attachMetric)
+        if useMLModel, let url = compiledModelURL {
+            // ROI 聚焦推理（问题2 治本，2026-10-03）：训练集全部为"焊道特写"图，
+            // 而照片页是 12MP 全场景照片 scaleFill 到 640×640 —— 缺陷在模型输入里只占
+            // 极小像素且内容被压扁，分数普遍低于阈值，表现为"明显焊瘤也检不出"。
+            // 改为把用户框选的 ROI 裁剪出来（外扩 10% 上下文）单独送模型：
+            // 输入分布对齐训练集"特写"，缺陷在 640 输入中的占比提升一个量级。
+            // runModel 内部已把框坐标映射回全图归一化坐标，故无需再按 ROI 过滤。
+            if let roi, let dets = try? runModel(at: url, image: upright, maxCount: maxCount, roi: roi) {
+                diagLock.lock(); _lastUsedML = true; diagLock.unlock()
+                return dets.map(attachMetric)
+            }
+            if let dets = try? runModel(at: url, image: upright, maxCount: maxCount, roi: nil) {
+                diagLock.lock(); _lastUsedML = true; diagLock.unlock()
+                return applyROI(dets).map(attachMetric)
+            }
         }
         diagLock.lock(); _lastUsedML = false; diagLock.unlock()
-        return applyROI(PhotoDefectDetector.detect(in: image, maxCount: maxCount)).map(attachMetric)
+        return applyROI(PhotoDefectDetector.detect(in: upright, maxCount: maxCount)).map(attachMetric)
+    }
+
+    /// 把 UIImage 重绘为"方向向上"的位图（消除 EXIF 方向与 CGImage 原始方向的差异）。
+    /// 已是 .up 时原样返回，零开销。
+    private static func uprightImage(_ image: UIImage) -> UIImage {
+        guard image.imageOrientation != .up else { return image }
+        let size = image.size
+        guard size.width > 0, size.height > 0 else { return image }
+        let fmt = UIGraphicsImageRendererFormat()
+        fmt.scale = 1            // 位图像素 == image.size（与画布/标定的坐标基准一致）
+        fmt.opaque = true
+        return UIGraphicsImageRenderer(size: size, format: fmt).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
     }
 
     /// 诊断：最近一次 detect 实际使用的引擎（true=Core ML 成功推理；false=回退 CV 规则）。
@@ -224,11 +254,34 @@ struct MLDefectDetector {
     }
 
     /// 运行 YOLOv8 检测模型（Core ML NMS 导出），返回归一化框 + App type。
+    /// roi 非 nil 时走"ROI 聚焦"路径：只对 ROI 裁剪区（外扩 10% 上下文）推理，
+    /// 并把框坐标映射回全图归一化坐标（pixelSize 亦按全图像素计）。
     /// 任何异常抛出让上层回退 CV。
-    private static func runModel(at url: URL, image: UIImage, maxCount: Int) throws -> [DetectedDefect] {
-        // 优化点 A：推理前做 CLAHE 白平衡增强（失败回退原图，绝不崩溃）
-        guard let cgRaw = image.cgImage else { return [] }
-        let cg: CGImage = ImagePreprocessor.enhance(cgRaw) ?? cgRaw
+    private static func runModel(at url: URL, image: UIImage, maxCount: Int, roi: CGRect? = nil) throws -> [DetectedDefect] {
+        guard let cgFull = image.cgImage else { return [] }
+        let fullW = Double(cgFull.width), fullH = Double(cgFull.height)
+
+        // ROI 聚焦裁剪（问题2 治本）：见 detect() 注释。外扩 10% 给模型留焊道边界上下文
+        // （咬边等缺陷正好位于焊道边缘），外扩区检出的框同样映射回全图参与展示。
+        var cropPix: CGRect? = nil
+        var sourceCG = cgFull
+        if let roi {
+            let x0 = max(0.0, roi.minX - roi.width * 0.10)
+            let y0 = max(0.0, roi.minY - roi.height * 0.10)
+            let x1 = min(1.0, roi.maxX + roi.width * 0.10)
+            let y1 = min(1.0, roi.maxY + roi.height * 0.10)
+            let pix = CGRect(x: x0 * fullW, y: y0 * fullH,
+                             width: (x1 - x0) * fullW, height: (y1 - y0) * fullH)
+            guard pix.width >= 24, pix.height >= 24,
+                  let cropped = cgFull.cropping(to: pix) else { return [] }
+            cropPix = pix
+            sourceCG = cropped
+        }
+
+        // 优化点 A：推理前做 CLAHE 白平衡增强（失败回退原图，绝不崩溃）。
+        // 增强作用在（裁剪后的）小图上——与 ImagePreprocessor 注释
+        // "处理对象为 ROI 裁剪后的小图"的本意一致，逐像素开销可忽略。
+        let cg: CGImage = ImagePreprocessor.enhance(sourceCG) ?? sourceCG
 
         let request = try cachedRequest(for: url)
 
@@ -316,8 +369,18 @@ struct MLDefectDetector {
         _lastRawScores = rawAll.sorted { $0.score > $1.score }.prefix(5).map { $0 }
         diagLock.unlock()
 
-        return out.prefix(maxCount).map { d in
-            DetectedDefect(rect: d.rect, type: d.type, pixelSize: d.pixelSize)
+        // crop 路径：把"crop 内归一化框"映射回"全图归一化框"，pixelSize 用全图像素
+        return out.prefix(maxCount).map { d -> DetectedDefect in
+            if let pix = cropPix {
+                let fx = (pix.minX + d.rect.minX * pix.width) / fullW
+                let fy = (pix.minY + d.rect.minY * pix.height) / fullH
+                let fw = d.rect.width * pix.width / fullW
+                let fh = d.rect.height * pix.height / fullH
+                return DetectedDefect(rect: CGRect(x: fx, y: fy, width: fw, height: fh),
+                                      type: d.type,
+                                      pixelSize: CGSize(width: fw * fullW, height: fh * fullH))
+            }
+            return DetectedDefect(rect: d.rect, type: d.type, pixelSize: d.pixelSize)
         }
     }
 

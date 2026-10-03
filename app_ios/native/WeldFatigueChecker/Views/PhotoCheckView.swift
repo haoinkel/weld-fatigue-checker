@@ -642,6 +642,20 @@ struct PhotoCheckView: View {
             store.vision.imperfections.append(imp)
         }
         regradeAll()   // 识别完成后按累计气孔率法统一重评（含气孔双判据）
+        // 诊断对照（问题2）：ROI 聚焦推理 0 检出时，补跑一次全图推理——
+        // 区分「框选范围没盖住缺陷（全图能检出）」vs「模型分数不足被阈值卡住（全图也没有）」。
+        // 全图检出的缺陷不进缺陷列表（ROI 闸门语义不变），仅作提示。
+        var fullImgHint = ""
+        if detects.isEmpty {
+            let full = MLDefectDetector.detect(in: image, roi: nil, maxCount: 8)
+            if !full.isEmpty {
+                let kinds = Dictionary(grouping: full, by: { $0.type })
+                    .map { "\(AnnotationMarker.shortLabel($0.key))×\($0.count)" }
+                    .sorted().joined(separator: "、")
+                fullImgHint = "全图对照：模型在全图发现 \(full.count) 处疑似缺陷（\(kinds)），" +
+                    "但中心未落在框选区域内。请检查框选范围是否完整盖住焊缝缺陷（可追加框选，松手即自动重识别）。"
+            }
+        }
         let engine = MLDefectDetector.engineName
         let nmsInfo = MLDefectDetector.nmsThresholdOverridden
             ? "NMS阈值已降至0.05；" : "NMS阈值0.25(运行时覆盖未生效)；"
@@ -652,9 +666,11 @@ struct PhotoCheckView: View {
                 : " " + nmsInfo + "已在最高灵敏度仍未检出。"
         }()
         store.autoState = (detects.isEmpty
-            ? "未检测到明显视觉异常（\(engine)）。模型原始置信度 Top：\(MLDefectDetector.lastRawScoresText)。\(diag)" +
-              "若 Top 分数普遍 <0.2，说明现场照片（暗光/粉笔字/角焊缝）与训练集差异过大，属模型能力缺口，需补真实场景照片重训。"
-            : "已自动识别 \(detects.count) 处疑似缺陷（\(engine)），位置与尺寸已在照片上标注。" +
+            ? (fullImgHint.isEmpty
+                ? "框选区域内未检测到明显视觉异常（\(engine)，已按框选区域聚焦识别）。模型原始置信度 Top：\(MLDefectDetector.lastRawScoresText)。\(diag)" +
+                  "若 Top 分数普遍 <0.2，说明现场照片（暗光/粉笔字/角焊缝）与训练集差异过大，属模型能力缺口，需补真实场景照片重训。"
+                : fullImgHint)
+            : "已自动识别 \(detects.count) 处疑似缺陷（\(engine)，ROI 聚焦），位置与尺寸已在照片上标注。" +
               (ppm == nil
                 ? " 点「📏 标定比例」设定参照长度后，尺寸以 mm 显示并自动评级。"
                 : " 已按板厚 \(String(format: "%.0f", t)) mm 做 ISO 5817 评级。"))
