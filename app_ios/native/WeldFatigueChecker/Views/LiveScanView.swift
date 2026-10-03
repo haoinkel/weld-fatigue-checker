@@ -43,6 +43,9 @@ struct LiveScanView: View {
         }
         .background(Color.black.ignoresSafeArea())
         .statusBarHidden(true)
+        // 问题3加固：退出/返回键钉在根视图 overlay 最上层，不参与 VStack 布局分配——
+        // 无论中间相机区/底栏如何伸缩，该键永远可见可点（真机“无返回无退出”的终极保险）。
+        .overlay(alignment: .topLeading) { floatingExitButton }
         .onAppear {
             scanner.start()
             // 沿用之前已框选的焊缝区域（若用户已在照片或上次扫描中框选过）
@@ -57,18 +60,10 @@ struct LiveScanView: View {
         }
     }
 
-    // MARK: - 顶栏（退出 + 标题/FPS）
+    // MARK: - 顶栏（标题/FPS；退出键已上移为根视图浮动钉死，见 floatingExitButton）
     private var topBar: some View {
         HStack {
-            Button(action: { dismiss() }) {
-                Label("退出", systemImage: "xmark.circle.fill")
-                    .font(.subheadline.bold())
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12).padding(.vertical, 8)
-                    .background(Color.black.opacity(0.65), in: Capsule())
-                    .overlay(Capsule().stroke(Color.white.opacity(0.9), lineWidth: 1))
-            }
-            .accessibilityLabel("退出实时扫描")
+            Color.clear.frame(width: 64, height: 34)   // 给浮动退出键占位，标题保持居中
             Spacer()
             VStack(spacing: 2) {
                 Text("🎥 实时焊缝缺陷扫描")
@@ -91,6 +86,22 @@ struct LiveScanView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(Color.black.opacity(0.55))
+    }
+
+    // 问题3：浮动退出/返回键——overlay 钉在根视图左上，永远在最上层、永远可点。
+    // dismiss() 同时承担“返回上一页(外观检查)”与“退出实时扫描”两个语义。
+    private var floatingExitButton: some View {
+        Button(action: { dismiss() }) {
+            Label("退出", systemImage: "xmark.circle.fill")
+                .font(.subheadline.bold())
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .background(Color.black.opacity(0.65), in: Capsule())
+                .overlay(Capsule().stroke(Color.white.opacity(0.9), lineWidth: 1))
+        }
+        .accessibilityLabel("退出实时扫描")
+        .padding(.leading, 12)
+        .padding(.top, 8)
     }
 
     // MARK: - 中部：相机画面 + ROI/缺陷叠层（aspectFill 映射基于本区域）
@@ -135,6 +146,23 @@ struct LiveScanView: View {
                         .padding(.horizontal, 5).padding(.vertical, 2)
                         .background(Color.yellow.opacity(0.9), in: RoundedRectangle(cornerRadius: 5))
                         .position(x: rs.midX, y: max(offY + 12, rs.minY - 10))
+                }
+
+                // 问题3：未框选时常显“框选区域”虚线占位框——框选功能的可见存在感，
+                // 与验证基线（用户基准截图）一致；拖拽出框后自动消失，替换为“焊缝#N”实框。
+                if scanner.rois.isEmpty && roiStart == nil {
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(Color.yellow, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                        .frame(width: vw * 0.28, height: vh * 0.30)
+                        .overlay(alignment: .top) {
+                            Text("框选区域")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(.black)
+                                .padding(.horizontal, 5).padding(.vertical, 2)
+                                .background(Color.yellow.opacity(0.9), in: RoundedRectangle(cornerRadius: 5))
+                                .offset(y: -10)
+                        }
+                        .position(x: vw / 2, y: vh / 2)
                 }
 
                 // 拖拽中的框（实线黄）
@@ -217,7 +245,7 @@ struct LiveScanView: View {
                     if roiDrawing { roiDrawing = false; roiStart = nil; roiCurrent = nil }
                     else { roiDrawing = true }
                 } label: {
-                    Label(roiDrawing ? "框选中…拖拽" : "🎯 框选焊缝", systemImage: "viewfinder")
+                    Label(roiDrawing ? "框选中…拖拽" : "框选焊缝", systemImage: "viewfinder")
                         .font(.subheadline)
                         .padding(.horizontal, 8).padding(.vertical, 6)
                         .background(roiDrawing ? Color.yellow : Theme.cyan.opacity(0.12),
@@ -229,7 +257,7 @@ struct LiveScanView: View {
                         scanner.rois = []
                         store.vision.weldSeamROIs = []
                     } label: {
-                        Label("清除全部", systemImage: "xmark")
+                        Label("清除", systemImage: "xmark")
                             .font(.subheadline)
                             .padding(.horizontal, 8).padding(.vertical, 6)
                             .background(Color.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
@@ -240,7 +268,7 @@ struct LiveScanView: View {
             }
 
             if scanner.rois.isEmpty {
-                Text("未框选焊缝区域：暂不检测任何缺陷（避免把非焊缝物体误报为余高）。点「🎯 框选焊缝」在画面上拖拽出焊缝范围；可连续框选多处，每拖一次追加一个区域。")
+                Text("未框选焊缝区域：暂不检测任何缺陷（避免把非焊缝物体误报为余高）。点「框选焊缝」后在画面上拖拽出焊缝范围；可连续框选多处，每拖一次追加一个区域。")
                     .font(.caption2).foregroundStyle(.orange)
                     .padding(6)
                     .frame(maxWidth: .infinity, alignment: .leading)
