@@ -107,6 +107,16 @@ struct MLDefectDetector {
         return s.map { "\($0.cls) \(String(format: "%.2f", $0.score))" }.joined(separator: " / ")
     }
 
+    /// 诊断：最近一次推理中"分数达标但输出框无效（宽/高≤0 或 NaN）"而被丢弃的候选数。
+    /// 出现 >0 说明模型对该输入的坐标输出异常（域外输入的典型表现）——
+    /// 这解释了「Top 分数看着够高（如 0.2 > 极灵敏阈值 0.09）却 0 检出」的矛盾：
+    /// 分数过了阈值，框坐标无效，在 rect 守卫处被静默丢弃。
+    private static var _lastDroppedBox = 0
+    static var lastDroppedBoxCount: Int {
+        diagLock.lock(); defer { diagLock.unlock() }
+        return _lastDroppedBox
+    }
+
     /// 诊断：最近一次推理实际送入模型的输入图（ROI 聚焦时=裁剪+letterbox+CLAHE 后）。
     /// 上层展示缩略图，让用户直接核查"模型看到的是什么"（框错位/裁剪区错误一目了然）。
     private static var _lastInputSnapshot: UIImage?
@@ -376,6 +386,7 @@ struct MLDefectDetector {
         var out: [(rect: CGRect, type: String, pixelSize: CGSize, score: Double)] = []
         var rawAll: [(cls: String, score: Double)] = []
         var lowConf: [(cls: String, score: Double)] = []
+        var droppedBox = 0   // 诊断：分数达标但框无效（退化/NaN）被丢弃的候选数
         for i in 0 ..< count {
             // confidence[i] = (nc,) 类分数向量，取 argmax 作为类别与分数
             var best = -1, bestScore = 0.0
@@ -407,7 +418,7 @@ struct MLDefectDetector {
             let maxX = max(0.0, min(1.0, x + w))
             let maxY = max(0.0, min(1.0, y + h))
             let rect = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
-            guard rect.width > 0, rect.height > 0 else { continue }
+            guard rect.width > 0, rect.height > 0 else { droppedBox += 1; continue }
 
             let type: String = (best < classNames.count) ? (labelMap[classNames[best]] ?? classNames[best]) : "defect"
             let pixelSize = CGSize(width: w * imgW, height: h * imgH)
@@ -422,6 +433,7 @@ struct MLDefectDetector {
         diagLock.lock()
         _lastRawScores = rawAll.sorted { $0.score > $1.score }.prefix(5).map { $0 }
         _lastLowConf = lowConf.sorted { $0.score > $1.score }.prefix(5).map { $0 }
+        _lastDroppedBox = droppedBox
         diagLock.unlock()
 
         // crop 路径：把"letterbox 内归一化框"→"crop 归一化框"→"全图归一化框"，pixelSize 用全图像素

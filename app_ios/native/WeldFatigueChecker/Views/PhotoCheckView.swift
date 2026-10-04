@@ -659,9 +659,10 @@ struct PhotoCheckView: View {
             detects += MLDefectDetector.detect(in: image, roi: r)
         }
         // 先固化"ROI 聚焦轮"的诊断值（下方补跑全图对照会覆盖这些静态诊断）：
-        // Top 原始分数 / 低分候选 / 送检输入快照，全部取 ROI 轮的。
+        // Top 原始分数 / 低分候选 / 无效框丢弃数 / 送检输入快照，全部取 ROI 轮的。
         let roiScoresText = MLDefectDetector.lastRawScoresText
         let roiLowConfText = MLDefectDetector.lastLowConfText
+        let roiDroppedBox = MLDefectDetector.lastDroppedBoxCount
         mlInputSnapshot = MLDefectDetector.lastInputSnapshot
         // 清掉上一张照片留下的自动框（保留手动添加的缺陷）
         store.vision.imperfections.removeAll { $0.bbox != nil }
@@ -712,9 +713,14 @@ struct PhotoCheckView: View {
                 ? "低分候选：\(roiLowConfText)（低于标准档阈值0.30~0.45，点「极灵敏」即可显示这些候选）。"
                 : "低分候选：\(roiLowConfText)（极灵敏档阈值≈0.05~0.09仍未达标）。"
         }()
+        // 无效框提示：分数达标但模型输出的框坐标无效（宽/高≤0 或 NaN）被丢弃——
+        // 这是「Top 分数够高却 0 检出」矛盾的候选解释之一，>0 即模型坐标输出异常。
+        let dropHint: String = roiDroppedBox > 0
+            ? "另有 \(roiDroppedBox) 个候选分数达标但输出框无效被丢弃（模型坐标输出异常信号）。"
+            : ""
         store.autoState = (detects.isEmpty
             ? (fullImgHint.isEmpty
-                ? "框选区域内未检测到明显视觉异常（\(engine)，已按框选区域聚焦识别）。模型原始置信度 Top：\(roiScoresText)。\(lowHint)\(diag)" +
+                ? "框选区域内未检测到明显视觉异常（\(engine)，已按框选区域聚焦识别）。模型原始置信度 Top：\(roiScoresText)。\(lowHint)\(dropHint)\(diag)" +
                   "核查两步：①点下方「🔬 模型实际看到的输入」确认送检图完整包含焊缝与缺陷（未包含=重新框选/追加框选）；" +
                   "②送检图正常但仍 0 检出且 Top<0.2，属现场照片与训练集域差距过大，需补真实场景照片重训" +
                   "（合并训练：ml/ai_studio_train_merged_120.ipynb，--init-from last120.pt）。"
