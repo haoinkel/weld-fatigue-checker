@@ -713,7 +713,7 @@ _coreml_cm.IOSDetectModel.__init__ = _ios_init_no_pad
 # ⚠️ 不要替换 forward 本身：torch 2.13 的 jit.trace 对“被替换的 forward 函数”会无限递归（RecursionError）。
 # 只靠 mlprogram=False 让原始 forward 里的 `if self.mlprogram and ...` 不触发，即可避免 pad 到 80。
 
-exported = model.export(format='coreml', nms=True, quantize='w8a16', imgsz=640, conf=0.05)  # conf=0.05 烤入 NMS：App 依赖模型内嵌阈值 0.05（否则 <0.25 候选在模型内被丢弃，App 端只见"无候选"）
+exported = model.export(format='coreml', nms=False, imgsz=640)  # 2026-10-04: 改裸导出 (1,9,8400)，App 端解码+NMS（pipeline 版真机输出异常，见 MLDefectDetector.swift 路径A注释）
 pkg_name = 'WeldDefectModel.mlpackage' if os.path.isdir(exported) else 'WeldDefectModel.mlmodel'
 if os.path.exists(exported):
     if os.path.exists(pkg_name):

@@ -10,20 +10,22 @@
 //
 // 训练产物接入方式（与旧 Create ML 实例分割路线不同，此处为 YOLOv8 检测）：
 //  1) AI Studio 上用 Ultralytics YOLOv8n 训练（ml/weld_train.py），导出 Core ML：
-//       model.export(format='coreml', nms=True, quantize='w8a16', imgsz=640)
-//       # Ultralytics 8.4.x：CoreML 不收 data=，int8 已废弃；唯一可用量化档为 w8a16
-//       # （INT8 权重 + 16-bit 激活，权重-only，~3.1MB，跑 Neural Engine）。
+//       model.export(format='coreml', nms=False, imgsz=640)
+//       # nms=False：导出裸检测头输出 (1, 9, 8400)（4 框坐标 + 5 类分数，分数已 sigmoid）。
+//       # 关键：mlprogram + IOSDetectModel + 内嵌 NMS 的 pipeline 导出在真机输出异常
+//       # （同输入 ONNX Top 0.45~0.78 而 CoreML 全零），故改为裸导出 + App 端解码 + NMS（见 decodeRawOutput）。
 //     产物 WeldDefectModel.mlpackage（YOLO 检测输出，非实例分割掩膜）。
 //  2) 把 WeldDefectModel.mlpackage 加入 Xcode 工程，勾选 Target Membership（Copy Bundle Resources）。
 //     Xcode 编译后包内生成 WeldDefectModel.mlmodelc，运行时由 compiledModelURL 找到。
 //  3) 训练类别顺序必须与下方 classNames 完全一致（Ultralytics 按 data.yaml names 导出）：
 //     ['porosity','crack','undercut','overlap','unfused']。
 //
-// Core ML 输出解析（YOLOv8 + nms=True 导出，VNCoreMLRequest 返回）：
-//  - 'coordinates' : MLMultiArray (M, 4)，归一化 [x_center, y_center, width, height]，范围 0..1。
-//  - 'confidence'  : MLMultiArray (M, num_classes)，每个检测的类分数（sigmoid 后 0..1）。
-//  NMS 已在模型内完成（nms=True），故 runModel 不再重复做 NMS（避免丢框）。
-//  若改用 nms=False 导出，请取消 runModel 末尾的 nms(...) 调用。
+// Core ML 输出解析（当前部署 = YOLOv8 + nms=False 裸导出，VNCoreMLRequest 返回）：
+//  - 单一特征输出 MLMultiArray，形状 (1, 9, 8400) 或 (9, 8400)：
+//      行 0..3 = cx,cy,w,h（模型输入 640 像素单位，归一化 = /640）；
+//      行 4..8 = 各类分数（模型内已 sigmoid，0..1）。
+//  NMS 不在模型内（nms=False），由 decodeRawOutput 内 App 端 NMS（iou 0.6）完成。
+//  兼容保留：若模型为 nms=True pipeline 双输出（coordinates + confidence），走路径 B 兜底。
 //
 // 说明：本环境无 Mac，无法编译验证；已对每一步做 try/catch 与空值守卫，
 //       任何解析异常都会回退 CV，因此即便字段名与你的模型略有出入也不会让 App 崩溃。
@@ -349,7 +351,37 @@ struct MLDefectDetector {
 
         guard let results = request.results else { return [] }
 
-        // 收集 YOLO NMS 双输出：coordinates (M,4) + confidence (M, nc)。
+        // 结果/诊断容器：两条解析路径共用
+        var out: [(rect: CGRect, type: String, pixelSize: CGSize, score: Double)] = []
+        var rawAll: [(cls: String, score: Double)] = []
+        var lowConf: [(cls: String, score: Double)] = []
+        var droppedBox = 0   // 诊断：分数达标但框无效（退化/NaN）被丢弃的候选数
+
+        // —— 路径 A（当前部署）：裸输出 (1, 4+nc, 8400)，nms=False 导出 ——
+        // 2026-10-04：内嵌 NMS pipeline 导出（mlprogram + IOSDetectModel）真机输出异常：
+        // 同一输入本地 ONNX Top 分数 0.45~0.78，CoreML pipeline 版却无任何候选，且无 Mac
+        // 环境无法调试其内部排布。改用 nms=False 裸导出：张量布局与 ONNX 完全一致
+        // （行 0..3 = cx,cy,w,h @640px；行 4..8 = 各类 sigmoid 分数），解码+阈值+NMS 全部
+        // 在 App 端完成，算法已用本地 ONNX 等价验证（气孔 0.476 / 未熔合 0.771 正确命中）。
+        let chCount = 4 + classNames.count
+        var rawMA: MLMultiArray? = nil
+        for obs in results {
+            guard let fv = obs as? VNCoreMLFeatureValueObservation,
+                  let ma = fv.featureValue.multiArrayValue else { continue }
+            let s = ma.shape
+            // (1, 9, 8400) 或 (9, 8400)：末维>1000 区别于 pipeline 的 confidence (M,5)
+            if (s.count == 3 && s[0].intValue == 1 && s[1].intValue == chCount && s[2].intValue > 1000)
+                || (s.count == 2 && s[0].intValue == chCount && s[1].intValue > 1000) {
+                rawMA = ma
+                break
+            }
+        }
+        if let raw = rawMA {
+            (out, rawAll, lowConf, droppedBox) = Self.decodeRawOutput(raw, maxCount: maxCount)
+        }
+
+        if rawMA == nil {
+        // —— 路径 B（兼容保留）：NMS pipeline 双输出 coordinates (M,4) + confidence (M,nc) ——
         // 兼容带 batch 维的导出（(1,M,4)/(1,M,nc)）—— 旧实现按 shape[0]=M/shape[1]=nc 读取，
         // 遇 batch 维时 count=1、nc=M ≠ 类别数 → 静默返回空，真机表现即"永远检不出"。
         var coordsMA: MLMultiArray?
@@ -383,10 +415,6 @@ struct MLDefectDetector {
 
         let imgW = Double(cg.width), imgH = Double(cg.height)
 
-        var out: [(rect: CGRect, type: String, pixelSize: CGSize, score: Double)] = []
-        var rawAll: [(cls: String, score: Double)] = []
-        var lowConf: [(cls: String, score: Double)] = []
-        var droppedBox = 0   // 诊断：分数达标但框无效（退化/NaN）被丢弃的候选数
         for i in 0 ..< count {
             // confidence[i] = (nc,) 类分数向量，取 argmax 作为类别与分数
             var best = -1, bestScore = 0.0
@@ -424,10 +452,9 @@ struct MLDefectDetector {
             let pixelSize = CGSize(width: w * imgW, height: h * imgH)
             out.append((rect, type, pixelSize, bestScore))
         }
+        }   // 路径 B（NMS pipeline 兼容）结束
 
-        // 可选：若改用 nms=False 导出，取消下一行注释做应用层 NMS（iouThresh 0.6）。
-        // let kept = nms(candidates: out, iouThresh: 0.6)
-        // return kept.prefix(maxCount).map { d in DetectedDefect(rect: d.rect, type: d.type, pixelSize: d.pixelSize) }
+        // 应用层 NMS 已由路径 A decodeRawOutput 内置（iou 0.6）；路径 B 依赖模型内嵌 NMS。
 
         // 记录诊断（阈值过滤前的原始 Top 候选 + 低分疑似，降序取前 5）
         diagLock.lock()
@@ -466,6 +493,66 @@ struct MLDefectDetector {
         if s.count == 2 { return (Int(s[0].intValue), Int(s[1].intValue)) }
         if s.count == 3, s[0].intValue == 1 { return (Int(s[1].intValue), Int(s[2].intValue)) }
         return nil
+    }
+
+    /// 解码 nms=False 裸导出输出：(1, 4+nc, 8400) 或 (4+nc, 8400)。
+    /// 行 0..3 = cx,cy,w,h（模型输入 640 像素单位）；行 4..(4+nc) = 各类 sigmoid 分数。
+    /// 阈值过滤（threshold(for:) 分级灵敏度）+ App 端 NMS（iou 0.6）。
+    /// 诊断口径与 pipeline 路径一致：rawAll=分数>0.01 全部候选；lowConf=≥0.05 但低于当前档阈值。
+    private static func decodeRawOutput(_ ma: MLMultiArray, maxCount: Int)
+        -> (out: [(rect: CGRect, type: String, pixelSize: CGSize, score: Double)],
+            rawAll: [(cls: String, score: Double)],
+            lowConf: [(cls: String, score: Double)],
+            droppedBox: Int) {
+        let nc = classNames.count
+        let anchors = ma.shape.last?.intValue ?? 0
+        // 线性索引步长（默认连续布局 (1,9,8400) → strides (75600, 8400, 1)）
+        let strides = ma.strides
+        let stCh = strides.count >= 2 ? strides[strides.count - 2].intValue : anchors
+        let stAn = strides.count >= 1 ? strides[strides.count - 1].intValue : 1
+        let side = 640.0   // 模型输入边长（原始 xywh 以此为单位，归一化 = /640）
+
+        var rawAll: [(cls: String, score: Double)] = []
+        var lowConf: [(cls: String, score: Double)] = []
+        var cands: [(rect: CGRect, type: String, pixelSize: CGSize, score: Double)] = []
+        var droppedBox = 0
+
+        for a in 0 ..< anchors {
+            var best = -1, bestScore = 0.0
+            for c in 0 ..< nc {
+                let s = ma[c * stCh + a * stAn].doubleValue
+                if s > bestScore { bestScore = s; best = c }
+            }
+            guard best >= 0, bestScore > 0.01, bestScore.isFinite else { continue }
+            let clsName = classNames[best]
+            rawAll.append((clsName, bestScore))
+
+            let cx = ma[0 * stCh + a * stAn].doubleValue / side
+            let cy = ma[1 * stCh + a * stAn].doubleValue / side
+            let w  = ma[2 * stCh + a * stAn].doubleValue / side
+            let h  = ma[3 * stCh + a * stAn].doubleValue / side
+            guard w.isFinite, h.isFinite, cx.isFinite, cy.isFinite else { droppedBox += 1; continue }
+
+            let x = cx - w / 2, y = cy - h / 2
+            let minX = max(0.0, min(1.0, x)), minY = max(0.0, min(1.0, y))
+            let maxX = max(0.0, min(1.0, x + w)), maxY = max(0.0, min(1.0, y + h))
+            let rect = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+            guard rect.width > 0, rect.height > 0 else { droppedBox += 1; continue }
+
+            if bestScore >= threshold(for: clsName) {
+                let type = labelMap[clsName] ?? clsName
+                cands.append((rect, type, CGSize(width: w * side, height: h * side), bestScore))
+            } else if bestScore >= 0.05 {
+                lowConf.append((clsName, bestScore))
+            }
+        }
+
+        // App 端 NMS（此前由模型内嵌 NMS 承担；iou 0.6），按分数降序保留
+        let kept = Array(nms(candidates: cands, iouThresh: 0.6).prefix(maxCount))
+        return (kept,
+                rawAll.sorted { $0.score > $1.score },
+                lowConf.sorted { $0.score > $1.score },
+                droppedBox)
     }
 
     private static func nms(candidates: [(rect: CGRect, type: String, pixelSize: CGSize, score: Double)],
