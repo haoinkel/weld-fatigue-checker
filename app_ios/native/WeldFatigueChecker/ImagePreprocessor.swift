@@ -1,7 +1,8 @@
 // ImagePreprocessor.swift
 // 优化点 A（论文依据：Atlantis ICAE-2025 CLAHE+YOLOv8 船厂非均匀光照；Springer 2025 HAN-YOLO）：
-// 现场光照不均（船厂/户外/暖光冷光色偏）下，推理前对 ROI 做「灰度世界白平衡 + CLAHE 局部对比增强」，
-// 提升气孔/咬边等低对比缺陷的召回，且不修改模型（仅预处理输入）。
+// 「灰度世界白平衡 + CLAHE 局部对比增强」，原用于改善现场光照不均下的召回。
+// ⚠️ 2026-10-04 真机判定：训练集预处理不含 CLAHE，推理时叠加构成域偏移，
+// 反而诱发满图气孔误报并压掉未熔合（详见 isEnabled 注释）——默认关闭。
 //
 // 实现约束（本机无 Mac，无法编译验证，以 CI/真机为唯一判据）：
 //  - 纯 CoreGraphics + 标准 Swift 数组操作，不引入 Accelerate/vImage（规避 vImage_Buffer 等结构在
@@ -14,8 +15,13 @@ import UIKit
 import CoreGraphics
 
 struct ImagePreprocessor {
-    /// 总开关（UI 可暴露开关；默认开启）。关闭时 enhance 直接返回 nil（走原图）。
-    static var isEnabled: Bool = true
+    /// 总开关（默认关闭）。关闭时 enhance 直接返回 nil（走原图）。
+    /// 2026-10-04 真机实验判定：训练集预处理不含 CLAHE，推理时叠加构成训练/推理域偏移——
+    /// CLAHE 把低纹理图的颗粒噪声增强成满图散斑，恰与"气孔"形态特征吻合，导致任意图
+    /// ≥16 处气孔误报（标准档 0.45 阈值都挡不住），并压掉正确的未熔合检出
+    /// （同图无 CLAHE 时 ONNX 未熔合 0.771 健康）。关闭后推理输入与训练分布对齐。
+    /// 保留实现：现场光照不均场景可经 UI 开关重开，但重开前应先用带 CLAHE 增广的数据微调模型。
+    static var isEnabled: Bool = false
     /// CLAHE 裁剪限：tile 内直方图超过 (clipLimit × tilePixels/256) 的部分被裁剪并重分配。
     /// 越大对比越强、噪声越易被放大。建议 1.5~4.0，现场强反光可降到 ~1.5。
     static var clipLimit: Double = 2.0

@@ -311,7 +311,8 @@ struct MLDefectDetector {
             sourceCG = cropped
         }
 
-        // 优化点 A：推理前做 CLAHE 白平衡增强（失败回退原图，绝不崩溃）。
+        // 优化点 A（默认关闭，见 ImagePreprocessor.isEnabled 注释）：CLAHE 与训练分布
+        // 不符（训练无此步），真机实验证实会诱发满图气孔误报。enhance 返回 nil 时回退原图。
         // 增强作用在（裁剪后的）小图上——与 ImagePreprocessor 注释
         // "处理对象为 ROI 裁剪后的小图"的本意一致，逐像素开销可忽略。
         let enhanced = ImagePreprocessor.enhance(sourceCG) ?? sourceCG
