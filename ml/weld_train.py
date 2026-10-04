@@ -702,7 +702,18 @@ print('mAP50-95:', round(metrics.box.map, 4))
 #   1) `data=` 对 format='coreml' 不支持（会 AssertionError），CoreML 量化不走 data= 校准。
 #   2) 旧 `int8=True` 已废弃，且映射到 quantize=8(全 INT8 需校准) → 因 CoreML 不收 data，静默回退 FP32(5.9MB)。
 #   3) CoreML 真正可用的量化是 quantize='w8a16'（INT8 权重 + 16-bit 激活，权重-only，无需校准，体积 ~1.5-2MB，跑 Neural Engine）。
-exported = model.export(format='coreml', nms=True, quantize='w8a16', imgsz=640)  # 权重 INT8 量化：~1.5-2MB，跑 Neural Engine，推理快
+# 关键修正（2026-10-04）：ultralytics CoreML(MLProgram) 导出 bug #22309
+# 会在 mlprogram=True(默认) 时把 5 类类维度 padding 到 80 通道，导致 App 守卫 nc==5 失败→全盲。
+# 强制 mlprogram=False 禁用 padding（保持 .mlpackage / MLProgram 现代格式），输出真实 5 通道。
+import ultralytics.utils.export.coreml as _coreml_cm
+_orig_ios_init = _coreml_cm.IOSDetectModel.__init__
+def _ios_init_no_pad(self, model, im, mlprogram=True):
+    _orig_ios_init(self, model, im, mlprogram=False)
+_coreml_cm.IOSDetectModel.__init__ = _ios_init_no_pad
+# ⚠️ 不要替换 forward 本身：torch 2.13 的 jit.trace 对“被替换的 forward 函数”会无限递归（RecursionError）。
+# 只靠 mlprogram=False 让原始 forward 里的 `if self.mlprogram and ...` 不触发，即可避免 pad 到 80。
+
+exported = model.export(format='coreml', nms=True, quantize='w8a16', imgsz=640, conf=0.05)  # conf=0.05 烤入 NMS：App 依赖模型内嵌阈值 0.05（否则 <0.25 候选在模型内被丢弃，App 端只见"无候选"）
 pkg_name = 'WeldDefectModel.mlpackage' if os.path.isdir(exported) else 'WeldDefectModel.mlmodel'
 if os.path.exists(exported):
     if os.path.exists(pkg_name):
