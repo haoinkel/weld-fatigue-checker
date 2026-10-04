@@ -43,6 +43,10 @@ struct PhotoCheckView: View {
     // 检测历史 sheet
     @State private var showHistory: Bool = false
 
+    // 诊断：模型实际看到的送检输入图（ROI 聚焦=裁剪+letterbox+CLAHE 后），点按放大核查
+    @State private var mlInputSnapshot: UIImage? = nil
+    @State private var showInputSnapshot: Bool = false
+
     var body: some View {
         Group {
             if hSize == .regular {
@@ -309,6 +313,36 @@ struct PhotoCheckView: View {
                                     .padding(6)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+                            }
+
+                            // 诊断：模型实际看到的送检输入（ROI 聚焦裁剪+letterbox+CLAHE 后）
+                            if let snap = mlInputSnapshot {
+                                Button {
+                                    showInputSnapshot = true
+                                } label: {
+                                    HStack(spacing: 8) {
+                                        Image(uiImage: snap)
+                                            .resizable().scaledToFit()
+                                            .frame(height: 44)
+                                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                                            .overlay(RoundedRectangle(cornerRadius: 6)
+                                                .stroke(Color.cyan.opacity(0.5), lineWidth: 1))
+                                        Text("🔬 模型实际看到的输入（点按放大）——核查是否完整包含焊缝与缺陷")
+                                            .font(.caption2).foregroundStyle(.secondary)
+                                        Spacer()
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                .sheet(isPresented: $showInputSnapshot) {
+                                    NavigationStack {
+                                        Image(uiImage: snap)
+                                            .resizable().scaledToFit()
+                                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                            .background(Color.black)
+                                            .navigationTitle("模型送检输入图（640×640 前处理结果）")
+                                            .navigationBarTitleDisplayMode(.inline)
+                                    }
+                                }
                             }
 
                             HStack(spacing: 8) {
@@ -613,6 +647,7 @@ struct PhotoCheckView: View {
         let rois = store.vision.weldSeamROIs
         guard !rois.isEmpty else {
             store.vision.imperfections.removeAll { $0.bbox != nil }
+            mlInputSnapshot = nil
             store.autoState = "未框选焊缝区域：已跳过自动识别，避免把非焊缝区域误报为缺陷。" +
                 "点照片上的「🎯 框选焊缝」拖拽出焊缝范围（可框多处），或在 🎥 实时扫描中框选后捕获。"
             return
@@ -623,6 +658,11 @@ struct PhotoCheckView: View {
         for r in rois {
             detects += MLDefectDetector.detect(in: image, roi: r)
         }
+        // 先固化"ROI 聚焦轮"的诊断值（下方补跑全图对照会覆盖这些静态诊断）：
+        // Top 原始分数 / 低分候选 / 送检输入快照，全部取 ROI 轮的。
+        let roiScoresText = MLDefectDetector.lastRawScoresText
+        let roiLowConfText = MLDefectDetector.lastLowConfText
+        mlInputSnapshot = MLDefectDetector.lastInputSnapshot
         // 清掉上一张照片留下的自动框（保留手动添加的缺陷）
         store.vision.imperfections.removeAll { $0.bbox != nil }
         let ppm = store.photoPxPerMm
@@ -665,10 +705,19 @@ struct PhotoCheckView: View {
                 ? " " + nmsInfo + "可把「灵敏度」调到「极灵敏」再试一次。"
                 : " " + nmsInfo + "已在最高灵敏度仍未检出。"
         }()
+        // 低分候选提示：模型"隐约看到"但被当前档阈值挡住的候选（如 overlap 0.20 < 标准档 0.45）
+        let lowHint: String = {
+            guard !roiLowConfText.isEmpty else { return "" }
+            return MLDefectDetector.sensitivity == .standard
+                ? "低分候选：\(roiLowConfText)（低于标准档阈值0.30~0.45，点「极灵敏」即可显示这些候选）。"
+                : "低分候选：\(roiLowConfText)（极灵敏档阈值≈0.05~0.09仍未达标）。"
+        }()
         store.autoState = (detects.isEmpty
             ? (fullImgHint.isEmpty
-                ? "框选区域内未检测到明显视觉异常（\(engine)，已按框选区域聚焦识别）。模型原始置信度 Top：\(MLDefectDetector.lastRawScoresText)。\(diag)" +
-                  "若 Top 分数普遍 <0.2，说明现场照片（暗光/粉笔字/角焊缝）与训练集差异过大，属模型能力缺口，需补真实场景照片重训。"
+                ? "框选区域内未检测到明显视觉异常（\(engine)，已按框选区域聚焦识别）。模型原始置信度 Top：\(roiScoresText)。\(lowHint)\(diag)" +
+                  "核查两步：①点下方「🔬 模型实际看到的输入」确认送检图完整包含焊缝与缺陷（未包含=重新框选/追加框选）；" +
+                  "②送检图正常但仍 0 检出且 Top<0.2，属现场照片与训练集域差距过大，需补真实场景照片重训" +
+                  "（合并训练：ml/ai_studio_train_merged_120.ipynb，--init-from last120.pt）。"
                 : fullImgHint)
             : "已自动识别 \(detects.count) 处疑似缺陷（\(engine)，ROI 聚焦），位置与尺寸已在照片上标注。" +
               (ppm == nil

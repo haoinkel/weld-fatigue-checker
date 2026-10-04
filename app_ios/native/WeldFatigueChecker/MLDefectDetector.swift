@@ -94,6 +94,27 @@ struct MLDefectDetector {
         return s.map { "\($0.cls) \(String(format: "%.2f", $0.score))" }.joined(separator: " / ")
     }
 
+    /// 诊断：最近一次推理中"分数≥0.05 但低于当前档阈值"的候选（低分疑似）。
+    /// 0 检出时上层展示 —— 让用户看到模型"隐约看到了什么"，切到极灵敏即可显示这些候选框。
+    private static var _lastLowConf: [(cls: String, score: Double)] = []
+    static var lastLowConfScores: [(cls: String, score: Double)] {
+        diagLock.lock(); defer { diagLock.unlock() }
+        return _lastLowConf
+    }
+    static var lastLowConfText: String {
+        let s = lastLowConfScores.sorted { $0.score > $1.score }.prefix(3)
+        guard !s.isEmpty else { return "" }
+        return s.map { "\($0.cls) \(String(format: "%.2f", $0.score))" }.joined(separator: " / ")
+    }
+
+    /// 诊断：最近一次推理实际送入模型的输入图（ROI 聚焦时=裁剪+letterbox+CLAHE 后）。
+    /// 上层展示缩略图，让用户直接核查"模型看到的是什么"（框错位/裁剪区错误一目了然）。
+    private static var _lastInputSnapshot: UIImage?
+    static var lastInputSnapshot: UIImage? {
+        diagLock.lock(); defer { diagLock.unlock() }
+        return _lastInputSnapshot
+    }
+
     /// 模型文件名（不含扩展名）。编译后为 .mlmodelc，开发期直接拖入为 .mlpackage。
     private static let modelFileName = "WeldDefectModel"
 
@@ -281,7 +302,35 @@ struct MLDefectDetector {
         // 优化点 A：推理前做 CLAHE 白平衡增强（失败回退原图，绝不崩溃）。
         // 增强作用在（裁剪后的）小图上——与 ImagePreprocessor 注释
         // "处理对象为 ROI 裁剪后的小图"的本意一致，逐像素开销可忽略。
-        let cg: CGImage = ImagePreprocessor.enhance(sourceCG) ?? sourceCG
+        let enhanced = ImagePreprocessor.enhance(sourceCG) ?? sourceCG
+
+        // ROI 裁剪路径：把（增强后的）裁剪图 letterbox 到正方形再送模型。
+        // 依据：训练期 Ultralytics 默认 letterbox 预处理（保持长宽比 + 114 灰边），
+        // 此前 scaleFill 把细长 ROI（如 1:2.5）强行拉伸成正方形，形态失真会压低分数；
+        // letterbox 让推理输入分布对齐训练分布。
+        var cg: CGImage = enhanced
+        var lbSide = 0.0, lbOffX = 0.0, lbOffY = 0.0, lbCropW = 0.0, lbCropH = 0.0
+        if cropPix != nil {
+            let cw = enhanced.width, ch = enhanced.height
+            let side = max(cw, ch)
+            let offX = (side - cw) / 2, offY = (side - ch) / 2
+            let fmt = UIGraphicsImageRendererFormat()
+            fmt.scale = 1
+            fmt.opaque = true
+            let boxed = UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: fmt).image { ctx in
+                UIColor(red: 114.0 / 255.0, green: 114.0 / 255.0, blue: 114.0 / 255.0, alpha: 1).setFill()
+                ctx.fill(CGRect(x: 0, y: 0, width: side, height: side))
+                UIImage(cgImage: enhanced).draw(in: CGRect(x: offX, y: offY, width: cw, height: ch))
+            }
+            if let boxedCG = boxed.cgImage {
+                cg = boxedCG
+                lbSide = Double(side); lbOffX = Double(offX); lbOffY = Double(offY)
+                lbCropW = Double(cw); lbCropH = Double(ch)
+            }
+        }
+
+        // 诊断快照：记录"模型实际看到的输入"
+        diagLock.lock(); _lastInputSnapshot = UIImage(cgImage: cg); diagLock.unlock()
 
         let request = try cachedRequest(for: url)
 
@@ -326,6 +375,7 @@ struct MLDefectDetector {
 
         var out: [(rect: CGRect, type: String, pixelSize: CGSize, score: Double)] = []
         var rawAll: [(cls: String, score: Double)] = []
+        var lowConf: [(cls: String, score: Double)] = []
         for i in 0 ..< count {
             // confidence[i] = (nc,) 类分数向量，取 argmax 作为类别与分数
             var best = -1, bestScore = 0.0
@@ -333,11 +383,15 @@ struct MLDefectDetector {
                 let s = conf[confOffset + i * fd.k + c].doubleValue
                 if s > bestScore { bestScore = s; best = c }
             }
-            let clsName = (best < classNames.count) ? classNames[best] : nil
+            let clsName = (best >= 0 && best < classNames.count) ? classNames[best] : nil
             if let clsName, bestScore > 0.01 {
                 rawAll.append((clsName, bestScore))   // 诊断：阈值过滤前的原始候选
             }
-            guard best >= 0, bestScore >= threshold(for: clsName) else { continue }
+            let passed = best >= 0 && bestScore >= threshold(for: clsName)
+            if !passed, let clsName, bestScore >= 0.05 {
+                lowConf.append((clsName, bestScore))  // 诊断：低分疑似（≥0.05、低于当前档阈值）
+            }
+            guard passed else { continue }
 
             // coordinates[i] = (4,) 归一化 [x_center, y_center, width, height]
             let cx = coords[i * 4 + 0].doubleValue
@@ -364,18 +418,25 @@ struct MLDefectDetector {
         // let kept = nms(candidates: out, iouThresh: 0.6)
         // return kept.prefix(maxCount).map { d in DetectedDefect(rect: d.rect, type: d.type, pixelSize: d.pixelSize) }
 
-        // 记录诊断（阈值过滤前的原始 Top 候选，降序取前 5）
+        // 记录诊断（阈值过滤前的原始 Top 候选 + 低分疑似，降序取前 5）
         diagLock.lock()
         _lastRawScores = rawAll.sorted { $0.score > $1.score }.prefix(5).map { $0 }
+        _lastLowConf = lowConf.sorted { $0.score > $1.score }.prefix(5).map { $0 }
         diagLock.unlock()
 
-        // crop 路径：把"crop 内归一化框"映射回"全图归一化框"，pixelSize 用全图像素
+        // crop 路径：把"letterbox 内归一化框"→"crop 归一化框"→"全图归一化框"，pixelSize 用全图像素
+        // （letterbox 绘制失败的兜底：lbSide==0 时框坐标本就是 crop 归一化，直接映射）
         return out.prefix(maxCount).map { d -> DetectedDefect in
             if let pix = cropPix {
-                let fx = (pix.minX + d.rect.minX * pix.width) / fullW
-                let fy = (pix.minY + d.rect.minY * pix.height) / fullH
-                let fw = d.rect.width * pix.width / fullW
-                let fh = d.rect.height * pix.height / fullH
+                let lx = lbSide > 0 ? (d.rect.minX * lbSide - lbOffX) / lbCropW : d.rect.minX
+                let ly = lbSide > 0 ? (d.rect.minY * lbSide - lbOffY) / lbCropH : d.rect.minY
+                let lw = lbSide > 0 ? d.rect.width * lbSide / lbCropW : d.rect.width
+                let lh = lbSide > 0 ? d.rect.height * lbSide / lbCropH : d.rect.height
+                // crop 归一化 → 全图归一化（越界裁剪到 [0,1]）
+                let fx = max(0.0, (pix.minX + lx * pix.width) / fullW)
+                let fy = max(0.0, (pix.minY + ly * pix.height) / fullH)
+                let fw = min(max(0.0, lw * pix.width / fullW), 1.0 - fx)
+                let fh = min(max(0.0, lh * pix.height / fullH), 1.0 - fy)
                 return DetectedDefect(rect: CGRect(x: fx, y: fy, width: fw, height: fh),
                                       type: d.type,
                                       pixelSize: CGSize(width: fw * fullW, height: fh * fullH))
