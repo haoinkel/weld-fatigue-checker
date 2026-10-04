@@ -521,7 +521,10 @@ struct MLDefectDetector {
         for a in 0 ..< anchors {
             var best = -1, bestScore = 0.0
             for c in 0 ..< nc {
-                let s = ma[c * stCh + a * stAn].doubleValue
+                // 注意：nms=False 裸导出布局为 (cx,cy,w,h, cls0..clsN)，
+                // 类分数在通道 4..(4+nc)，前 4 通道是框坐标（像素级大值）。
+                // 误把坐标通道当类分数是真机满图高分乱报的根因。
+                let s = ma[(4 + c) * stCh + a * stAn].doubleValue
                 if s > bestScore { bestScore = s; best = c }
             }
             guard best >= 0, bestScore > 0.01, bestScore.isFinite else { continue }
