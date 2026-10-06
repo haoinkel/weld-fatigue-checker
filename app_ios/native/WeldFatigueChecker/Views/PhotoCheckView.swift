@@ -512,6 +512,26 @@ struct PhotoCheckView: View {
                         .onChange(of: useMLModel) { _, v in MLDefectDetector.useMLModel = v }
                     }
 
+                    // 检测图源分流：可见光照片→表面模型 / X 光片→X 光模型
+                    HStack {
+                        Image(systemName: "camera.viewfinder").foregroundStyle(.purple)
+                        Text("检测图源").font(.subheadline)
+                        Spacer()
+                        Picker("检测图源", selection: Binding(
+                            get: { MLDefectDetector.activeSource },
+                            set: { new in
+                                MLDefectDetector.activeSource = new
+                                if let img = store.photo { autoAnnotate(image: img) }
+                            }
+                        )) {
+                            Text("可见光照片").tag(MLDefectDetector.Source.surface)
+                            Text("X 光片").tag(MLDefectDetector.Source.xray)
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(maxWidth: 200)
+                    }
+                    .accessibilityLabel("检测图源：可见光照片或 X 光片")
+
                     SectionTitle(text: "焊趾改善措施", systemImage: "wrench.and.screwdriver")
                     ForEach(KnowledgeBank.improvements, id: \.method) { m in
                         Toggle(m.label, isOn: Binding(

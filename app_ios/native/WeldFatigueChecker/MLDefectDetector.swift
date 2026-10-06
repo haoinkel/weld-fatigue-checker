@@ -41,8 +41,20 @@ struct MLDefectDetector {
     /// 是否优先使用 Core ML 模型（false 时强制走 CV 规则）。可在 UI 暴露开关。
     static var useMLModel: Bool = true
 
-    /// 模型是否已可用（已编译且能被 Bundle 找到）。用于在 UI 提示当前走哪条路线。
-    static var isModelAvailable: Bool { compiledModelURL != nil }
+    /// 检测图源（按物理输入类型分流）：
+    ///  - .surface（可见光照片）→ 表面模型 WeldDefectSurfaceModel（7 类，iPad 相机/相册主用）
+    ///  - .xray（X 光片）→ X 光模型 WeldDefectModel（5 类，旧管线）
+    /// PhotoCheckView 提供「检测图源」切换；默认 .surface 以匹配可见光输入。
+    enum Source: Int {
+        case xray = 0
+        case surface = 1
+    }
+    static var activeSource: Source = .surface
+
+    /// 模型是否已可用（已编译且能被 Bundle 找到）。随 activeSource 反映对应模型。
+    static var isModelAvailable: Bool {
+        activeSource == .surface ? SurfaceDefectDetector.isModelAvailable : (compiledModelURL != nil)
+    }
 
     /// 置信度阈值：YOLO 类分数低于此值的检测框丢弃。训练后按 mAP/召回调参（建议 0.4~0.5，
     /// 偏低有利于提升裂纹/咬边等少样本类的召回，漏报比误报更危险）。
@@ -85,7 +97,7 @@ struct MLDefectDetector {
     /// 空结果时上层把它展示出来 —— 区分「模型完全没看到」vs「分数低被阈值卡住」。
     /// （多线程访问加锁；仅诊断用途。）
     private static let diagLock = NSLock()
-    private static var _lastRawScores: [(cls: String, score: Double)] = []
+    static var _lastRawScores: [(cls: String, score: Double)] = []
     static var lastRawScores: [(cls: String, score: Double)] {
         diagLock.lock(); defer { diagLock.unlock() }
         return _lastRawScores
@@ -98,7 +110,7 @@ struct MLDefectDetector {
 
     /// 诊断：最近一次推理中"分数≥0.05 但低于当前档阈值"的候选（低分疑似）。
     /// 0 检出时上层展示 —— 让用户看到模型"隐约看到了什么"，切到极灵敏即可显示这些候选框。
-    private static var _lastLowConf: [(cls: String, score: Double)] = []
+    static var _lastLowConf: [(cls: String, score: Double)] = []
     static var lastLowConfScores: [(cls: String, score: Double)] {
         diagLock.lock(); defer { diagLock.unlock() }
         return _lastLowConf
@@ -113,7 +125,7 @@ struct MLDefectDetector {
     /// 出现 >0 说明模型对该输入的坐标输出异常（域外输入的典型表现）——
     /// 这解释了「Top 分数看着够高（如 0.2 > 极灵敏阈值 0.09）却 0 检出」的矛盾：
     /// 分数过了阈值，框坐标无效，在 rect 守卫处被静默丢弃。
-    private static var _lastDroppedBox = 0
+    static var _lastDroppedBox = 0
     static var lastDroppedBoxCount: Int {
         diagLock.lock(); defer { diagLock.unlock() }
         return _lastDroppedBox
@@ -121,7 +133,7 @@ struct MLDefectDetector {
 
     /// 诊断：最近一次推理实际送入模型的输入图（ROI 聚焦时=裁剪+letterbox+CLAHE 后）。
     /// 上层展示缩略图，让用户直接核查"模型看到的是什么"（框错位/裁剪区错误一目了然）。
-    private static var _lastInputSnapshot: UIImage?
+    static var _lastInputSnapshot: UIImage?
     static var lastInputSnapshot: UIImage? {
         diagLock.lock(); defer { diagLock.unlock() }
         return _lastInputSnapshot
@@ -163,6 +175,13 @@ struct MLDefectDetector {
     ///      区域外不报（避免非焊缝物体误报）。nil 表示不限制（调用方负责闸门逻辑）。
     static func detect(in image: UIImage, maxCount: Int = 16, roi: CGRect? = nil,
                        depth: CVPixelBuffer? = nil, intrinsics: matrix_float3x3? = nil) -> [DetectedDefect] {
+        // 图源分流：可见光照片 → 表面模型；X 光片 → 本（X 光）模型。
+        // SurfaceDefectDetector 的诊断值随后同步到本结构体，使读取 MLDefectDetector.* 的 UI 无需改动。
+        if activeSource == .surface {
+            let dets = SurfaceDefectDetector.detect(in: image, maxCount: maxCount, roi: roi, depth: depth, intrinsics: intrinsics)
+            syncSurfaceDiagnostics()
+            return dets
+        }
         // 方向归一（问题2 伴生修复）：VNImageRequestHandler 只认 CGImage 原始像素方向，
         // 而 UI 侧（照片画布 / 框选 ROI / bbox 叠层 / 标定）全部按 UIImage.orientation
         // 转正后的方向绘制。带 EXIF 方向的照片（相机竖拍/相册导入）不转正时，
@@ -216,10 +235,20 @@ struct MLDefectDetector {
     }
 
     /// 诊断：最近一次 detect 实际使用的引擎（true=Core ML 成功推理；false=回退 CV 规则）。
-    private static var _lastUsedML = false
+    static var _lastUsedML = false
     static var lastUsedML: Bool {
         diagLock.lock(); defer { diagLock.unlock() }
         return _lastUsedML
+    }
+
+    /// 当 activeSource==.surface 时，把 SurfaceDefectDetector 的诊断值同步到本结构体，
+    /// 使读取 MLDefectDetector.* 诊断的 UI（PhotoCheckView 等）无需改动。
+    private static func syncSurfaceDiagnostics() {
+        _lastRawScores = SurfaceDefectDetector.lastRawScores
+        _lastLowConf = SurfaceDefectDetector.lastLowConfScores
+        _lastDroppedBox = SurfaceDefectDetector.lastDroppedBoxCount
+        _lastInputSnapshot = SurfaceDefectDetector.lastInputSnapshot
+        _lastUsedML = SurfaceDefectDetector.lastUsedML
     }
 
     /// 当前生效的引擎描述（用于自动标注提示文案）
