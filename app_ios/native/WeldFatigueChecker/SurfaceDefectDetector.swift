@@ -416,7 +416,9 @@ struct SurfaceDefectDetector {
             }
         }
         let kept = nms(candidates: all, iouThresh: 0.6)
-        return Array(kept.prefix(maxCount))
+        return kept.prefix(maxCount).map {
+            DetectedDefect(rect: $0.rect, type: $0.type, pixelSize: $0.pixelSize)
+        }
     }
 
     // MARK: - 非极大抑制
