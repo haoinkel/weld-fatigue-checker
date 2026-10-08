@@ -68,24 +68,59 @@ struct ResultView: View {
             }
 
             Text("② 表面缺陷（ISO 5817）").font(.subheadline.bold())
-            ForEach(result.imperfections, id: \.label) { r in
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(r.accepted == true ? Theme.ok : (r.accepted == false ? Theme.danger : Theme.warn))
-                        .frame(width: 8, height: 8)
-                    Text(r.label + (r.fatigueRelevant ? " [疲劳相关]" : ""))
-                        .font(.subheadline).foregroundStyle(Theme.textPrimary)
-                    Spacer()
-                    Text(r.accepted == true ? "通过" : (r.accepted == false ? "超差" : "未判定"))
-                        .font(.caption.bold())
-                        .foregroundStyle(r.accepted == true ? Theme.ok : (r.accepted == false ? Theme.danger : Theme.warn))
-                    Text("| \(r.limit)")
-                        .font(.caption2).foregroundStyle(Theme.textSecondary)
+            let photoGraded = store.vision.imperfections.enumerated().compactMap { $0.1.grade != nil ? $0.0 : nil }
+            if result.imperfections.isEmpty && photoGraded.isEmpty {
+                Text("本次照片未检出可评级缺陷（ISO 5817 无可列项）。")
+                    .font(.caption).foregroundStyle(Theme.textSecondary)
+                    .padding(8)
+                    .background(Theme.panelGradient, in: RoundedRectangle(cornerRadius: 8))
+            } else {
+                ForEach(result.imperfections, id: \.label) { r in
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(r.accepted == true ? Theme.ok : (r.accepted == false ? Theme.danger : Theme.warn))
+                            .frame(width: 8, height: 8)
+                        Text(r.label + (r.fatigueRelevant ? " [疲劳相关]" : ""))
+                            .font(.subheadline).foregroundStyle(Theme.textPrimary)
+                        Spacer()
+                        Text(r.accepted == true ? "通过" : (r.accepted == false ? "超差" : "未判定"))
+                            .font(.caption.bold())
+                            .foregroundStyle(r.accepted == true ? Theme.ok : (r.accepted == false ? Theme.danger : Theme.warn))
+                        Text("| \(r.limit)")
+                            .font(.caption2).foregroundStyle(Theme.textSecondary)
+                    }
+                    .padding(8)
+                    .background(Theme.panelGradient, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8)
+                        .stroke((r.accepted == false ? Theme.danger : Theme.cyan).opacity(0.2), lineWidth: 1))
                 }
-                .padding(8)
-                .background(Theme.panelGradient, in: RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8)
-                    .stroke((r.accepted == false ? Theme.danger : Theme.cyan).opacity(0.2), lineWidth: 1))
+                if !photoGraded.isEmpty {
+                    Text("— 照片视觉识别 —").font(.caption2).foregroundStyle(Theme.textSecondary)
+                    ForEach(photoGraded, id: \.self) { i in
+                        let imp = store.vision.imperfections[i]
+                        HStack(spacing: 8) {
+                            Circle()
+                                .fill(imp.accepted == true ? Theme.ok : (imp.accepted == false ? Theme.danger : Theme.warn))
+                                .frame(width: 8, height: 8)
+                            Text(Theme.DefectTypes.label(imp.type)
+                                 + (imp.sizeMm != nil ? String(format: " %.1f mm", imp.sizeMm!) : ""))
+                                .font(.subheadline).foregroundStyle(Theme.textPrimary)
+                            Spacer()
+                            Text(imp.grade ?? "?")
+                                .font(.caption.bold())
+                                .foregroundStyle(imp.grade == "✗" ? Theme.danger : Theme.cyan)
+                            Text(imp.accepted == true ? "通过" : (imp.accepted == false ? "超差" : "未判定"))
+                                .font(.caption.bold())
+                                .foregroundStyle(imp.accepted == true ? Theme.ok : (imp.accepted == false ? Theme.danger : Theme.warn))
+                            Text("| \(imp.limitText ?? "")")
+                                .font(.caption2).foregroundStyle(Theme.textSecondary)
+                        }
+                        .padding(8)
+                        .background(Theme.panelGradient, in: RoundedRectangle(cornerRadius: 8))
+                        .overlay(RoundedRectangle(cornerRadius: 8)
+                            .stroke((imp.accepted == false ? Theme.danger : Theme.cyan).opacity(0.2), lineWidth: 1))
+                    }
+                }
             }
 
             Text("③ 改善建议（按优先级）").font(.subheadline.bold())

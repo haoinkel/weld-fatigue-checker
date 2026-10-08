@@ -67,14 +67,29 @@ enum ISO5817Grader {
     /// - t: 母材厚度 mm（ref=="t" 的比例基准）
     /// - b: 焊缝宽度基准 mm（ref=="b" 用，余高/凸度/熔透；缺省按 2t 近似）
     /// - returns: (level, accepted, limitText)
-    static func grade(type: String, sizeMm: Double, t: Double, b: Double? = nil) -> (level: String, accepted: Bool, limitText: String) {
+    static func grade(type: String, sizeMm: Double, t: Double, b: Double? = nil, level targetLevel: String? = nil) -> (level: String, accepted: Bool, limitText: String) {
         guard let d = doc else { return ("?", false, "标准数据缺失") }
         let key = aliases[type] ?? type
         guard let spec = d.imperfections.first(where: { $0.type == key }) else {
             return ("?", false, "未知缺陷类型: \(type)")
         }
 
-        // 从最严 B 到最松 D 找第一个满足的尺寸等级
+        // 用户指定目标质量等级（设计图纸指定 B/C/D）：只按该等级限值判定合格性
+        if let target = targetLevel {
+            guard let lim = spec.limits[target] else {
+                return ("?", false, "无等级 \(target) 定义")
+            }
+            if let permitted = lim.permitted, !permitted {
+                // 该等级不允许此类缺陷（如 B 级不允许咬边/未熔合）→ 一票否决
+                return ("✗", false, lim.formula ?? "\(target)级不允许")
+            }
+            if let upper = computeUpper(lim: lim, t: t, b: b), sizeMm <= upper {
+                return (target, true, lim.formula ?? "合格")
+            }
+            return ("✗", false, lim.formula ?? "超差")
+        }
+
+        // 未指定目标等级：自动从最严 B 到最松 D 找第一个满足的尺寸等级（辅助筛查）
         for level in ["B", "C", "D"] {
             guard let lim = spec.limits[level] else { continue }
             if let permitted = lim.permitted, !permitted {

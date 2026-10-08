@@ -502,6 +502,22 @@ struct PhotoCheckView: View {
                         Text("板厚用于把缺陷实测尺寸换算为 ISO 5817 质量等级（B/C/D）。改此值会即时重评所有已标注缺陷。")
                             .font(.caption2).foregroundStyle(.secondary)
 
+                        // 目标质量等级（设计图纸指定 B/C/D）：缺陷按该等级限值判定合格性
+                        HStack {
+                            Text("目标质量等级").font(.subheadline)
+                            Spacer()
+                            Picker("目标等级", selection: $store.params.qualityLevel) {
+                                Text("B 级（最严）").tag("B")
+                                Text("C 级").tag("C")
+                                Text("D 级（最松）").tag("D")
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(width: 210)
+                        }
+                        .onChange(of: store.params.qualityLevel) { _, _ in regradeAll() }
+                        Text("选定 ISO 5817 目标质量等级（通常按设计图纸指定）。缺陷将按该等级限值判定合格性；改此值即时重评所有已标注缺陷。")
+                            .font(.caption2).foregroundStyle(.secondary)
+
                         // 阶段2：检测引擎开关（AI 模型 / CV 规则回退）
                         HStack {
                             Image(systemName: "brain").foregroundStyle(.purple)
@@ -787,12 +803,12 @@ struct PhotoCheckView: View {
             guard let s = store.vision.imperfections[i].sizeMm else { continue }
             if type == "porosity", let a = agg {
                 // 等级徽章用单孔直径判定等级；accepted/limitText 用累计法（双判据）
-                let g = ISO5817Grader.grade(type: "porosity", sizeMm: s, t: t)
+                let g = ISO5817Grader.grade(type: "porosity", sizeMm: s, t: t, level: level)
                 store.vision.imperfections[i].grade = g.level
                 store.vision.imperfections[i].accepted = a.accepted
                 store.vision.imperfections[i].limitText = a.limitText
             } else {
-                let g = ISO5817Grader.grade(type: type, sizeMm: s, t: t)
+                let g = ISO5817Grader.grade(type: type, sizeMm: s, t: t, level: level)
                 store.vision.imperfections[i].grade = g.level
                 store.vision.imperfections[i].accepted = g.accepted
                 store.vision.imperfections[i].limitText = g.limitText
@@ -959,7 +975,7 @@ struct ImperfectionRow: View {
             return
         }
         if let s = imp.sizeMm {
-            let g = ISO5817Grader.grade(type: imp.type, sizeMm: s, t: store.vision.plateThicknessMm)
+            let g = ISO5817Grader.grade(type: imp.type, sizeMm: s, t: store.vision.plateThicknessMm, level: store.params.qualityLevel)
             store.vision.imperfections[index].grade = g.level
             store.vision.imperfections[index].accepted = g.accepted
             store.vision.imperfections[index].limitText = g.limitText
