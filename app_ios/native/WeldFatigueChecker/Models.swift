@@ -66,6 +66,7 @@ struct UserParams {
     var nRequired: Double = 2_000_000
     var gammaMf: Double = 1.0
     var qualityLevel: String = "C"   // B|C|D
+    var engineMode: String = "local"  // local|cloud|auto（双引擎并行：端侧/云端，云端无网自动回落端侧）
     var thickness: Double = 12
     var weldWidthMm: Double = 24      // 余高/凸度计算基准宽度 b（ISO 5817 余高限值 h≤v·b+add）；缺省 2t
 }

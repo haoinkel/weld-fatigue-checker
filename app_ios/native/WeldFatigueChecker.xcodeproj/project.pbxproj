@@ -14,6 +14,7 @@
 		00000000000000000010000C /* MLDefectDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000010000B /* MLDefectDetector.swift */; };
 		00000000000000000010000E /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000010000D /* Models.swift */; };
 		000000000000000000100010 /* PhotoDefectDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000010000F /* PhotoDefectDetector.swift */; };
+	000000000000000000100051 /* DefectDetectionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000100050 /* DefectDetectionEngine.swift */; };
 		000000000000000000100012 /* RealtimeDefectScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000100011 /* RealtimeDefectScanner.swift */; };
 		000000000000000000100014 /* ReportGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000100013 /* ReportGenerator.swift */; };
 		000000000000000000100016 /* StandardPackRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000100015 /* StandardPackRegistry.swift */; };
@@ -46,6 +47,7 @@
 		00000000000000000010000B /* MLDefectDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLDefectDetector.swift; sourceTree = "<group>"; };
 		00000000000000000010000D /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		00000000000000000010000F /* PhotoDefectDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoDefectDetector.swift; sourceTree = "<group>"; };
+	000000000000000000100050 /* DefectDetectionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DefectDetectionEngine.swift; sourceTree = "<group>"; };
 		000000000000000000100011 /* RealtimeDefectScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeDefectScanner.swift; sourceTree = "<group>"; };
 		000000000000000000100013 /* ReportGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportGenerator.swift; sourceTree = "<group>"; };
 		000000000000000000100015 /* StandardPackRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandardPackRegistry.swift; sourceTree = "<group>"; };
@@ -157,6 +159,7 @@
 				00000000000000000010000C,
 				00000000000000000010000E,
 				000000000000000000100010,
+			000000000000000000100051,
 				000000000000000000100012,
 				000000000000000000100014,
 				000000000000000000100016,

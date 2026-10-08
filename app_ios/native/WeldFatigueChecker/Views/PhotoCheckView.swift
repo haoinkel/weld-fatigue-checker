@@ -518,7 +518,20 @@ struct PhotoCheckView: View {
                         Text("选定 ISO 5817 目标质量等级（通常按设计图纸指定）。缺陷将按该等级限值判定合格性；改此值即时重评所有已标注缺陷。")
                             .font(.caption2).foregroundStyle(.secondary)
 
-                        // 阶段2：检测引擎开关（AI 模型 / CV 规则回退）
+                        // 双引擎并行检测开关：手动选择端侧/云端，云端无网自动回落端侧
+                        HStack {
+                            Text("检测引擎").font(.subheadline)
+                            Spacer()
+                            Picker("检测引擎", selection: $store.params.engineMode) {
+                                ForEach(DetectionEngineMode.allCases, id: \.self) { m in
+                                    Text(m.label).tag(m.rawValue)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(width: 300)
+                        }
+                        Text("端侧＝离线 / 保密 / 零费用；云端＝联网高精度兜底（需配置服务端，未配置自动回落端侧）。无网时云端自动切回端侧。")
+                            .font(.caption2).foregroundStyle(.secondary)
                         HStack {
                             Image(systemName: "brain").foregroundStyle(.purple)
                             Toggle("使用 AI 模型识别", isOn: $useMLModel)
@@ -691,6 +704,17 @@ struct PhotoCheckView: View {
 
     /// 照片载入后自动检测缺陷区域，标注位置 + 尺寸（bbox + location），并按当前板厚做 ISO 5817 评级
     private func autoAnnotate(image: UIImage) {
+        let mode = DetectionEngineMode(rawValue: store.params.engineMode) ?? .local
+        switch mode {
+        case .local, .auto:
+            runLocalDetection(image: image)
+        case .cloud:
+            runCloudDetection(image: image)
+        }
+    }
+
+    /// 端侧同步检测（原 autoAnnotate 主体，逻辑不变）：逐 ROI 聚焦 + 全图对照诊断。
+    private func runLocalDetection(image: UIImage) {
         fullImgRefBoxes = []   // 每轮识别先清掉上一轮的全图参考框
         // 焊缝区域闸门：未框选焊缝时不自动识别，避免把非焊缝区域（高光/纹理）误报为缺陷
         let rois = store.vision.weldSeamROIs
@@ -791,6 +815,49 @@ struct PhotoCheckView: View {
                 ? " 点「📏 标定比例」设定参照长度后，尺寸以 mm 显示并自动评级。"
                 : " 已按板厚 \(String(format: "%.0f", t)) mm 做 ISO 5817 评级。"))
             + "\n" + ISO5817Grader.ndtDisclaimer
+    }
+
+    // MARK: - 云端检测（双引擎并行：手动选云端 + 无网回落端侧）
+    private func runCloudDetection(image: UIImage) {
+        let rois = store.vision.weldSeamROIs
+        guard !rois.isEmpty else { runLocalDetection(image: image); return }
+        store.autoState = "云端识别中…"
+        Task {
+            do {
+                let detects = try await DetectionRouter.cloudDetect(in: image, rois: rois, maxCount: 16)
+                let msg = detects.isEmpty ? "" : ""
+                DispatchQueue.main.async { self.commitCloudDetects(detects, note: msg) }
+            } catch {
+                let errMsg = DetectionRouter.errorDesc(error)
+                DispatchQueue.main.async {
+                    self.runLocalDetection(image: image)
+                    self.store.autoState += "\n（云端不可用：\(errMsg)，已自动回落端侧）"
+                }
+            }
+        }
+    }
+
+    /// 把云端返回的缺陷写库并评级（与端侧写库逻辑一致）。
+    private func commitCloudDetects(_ detects: [DetectedDefect], note: String) {
+        store.vision.imperfections.removeAll { $0.bbox != nil }
+        let ppm = store.photoPxPerMm
+        let t = store.vision.plateThicknessMm
+        for d in detects {
+            let longPx = defectMeasurePx(type: d.type, pixelSize: d.pixelSize)
+            let sizeMm = ppm.map { Double(longPx) / $0 }
+            let center = CGPoint(x: d.rect.midX, y: d.rect.midY)
+            var imp = ImperfectionInput(type: d.type, sizeMm: sizeMm, poreMm: nil,
+                                        location: center, bbox: d.rect, pixelSize: d.pixelSize)
+            if let s = sizeMm, d.type != "defect" {
+                let g = ISO5817Grader.grade(type: d.type, sizeMm: s, t: t)
+                imp.grade = g.level; imp.accepted = g.accepted; imp.limitText = g.limitText
+            }
+            store.vision.imperfections.append(imp)
+        }
+        regradeAll()
+        store.autoState = (detects.isEmpty
+            ? "云端模式：框选区域内未检测到缺陷。\(note)"
+            : "云端识别 \(detects.count) 处缺陷（已联网服务端识别）。\(note)") + "\n" + ISO5817Grader.ndtDisclaimer
     }
 
     /// 板厚/类型/尺寸变化后，重新评级所有已测得尺寸的缺陷。
