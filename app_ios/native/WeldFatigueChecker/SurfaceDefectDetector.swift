@@ -146,7 +146,8 @@ struct SurfaceDefectDetector {
         let upright = Self.uprightImage(image)
         let applyROI: ([DetectedDefect]) -> [DetectedDefect] = { list in
             guard let r = roi else { return list }
-            return list.filter { r.contains(CGPoint(x: $0.rect.midX, y: $0.rect.midY)) }
+            // 保留 bbox 与 ROI 有交集的缺陷（原"中心在 ROI 内"过严：缺陷横跨框边时被误丢）
+            return list.filter { $0.rect.intersects(r) }
         }
         let attachMetric: (DetectedDefect) -> DetectedDefect = { d in
             guard let dm = depth, let k = intrinsics,

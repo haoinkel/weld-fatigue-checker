@@ -171,8 +171,8 @@ struct MLDefectDetector {
     // MARK: - 入口
 
     /// 统一检测入口。模型可用且开启时走 ML，否则（或推理失败）回退 CV 规则。
-    /// roi：焊缝区域（归一化 0..1）；传入时只保留中心落在 roi 内的缺陷，
-    ///      区域外不报（避免非焊缝物体误报）。nil 表示不限制（调用方负责闸门逻辑）。
+    /// roi：焊缝区域（归一化 0..1）；传入时只保留 bbox 与 roi 有交集的缺陷，
+    ///      完全在区域外的不报（避免非焊缝物体误报）。nil 表示不限制（调用方负责闸门逻辑）。
     static func detect(in image: UIImage, maxCount: Int = 16, roi: CGRect? = nil,
                        depth: CVPixelBuffer? = nil, intrinsics: matrix_float3x3? = nil) -> [DetectedDefect] {
         // 图源分流：可见光照片 → 表面模型；X 光片 → 本（X 光）模型。
@@ -189,7 +189,8 @@ struct MLDefectDetector {
         let upright = Self.uprightImage(image)
         let applyROI: ([DetectedDefect]) -> [DetectedDefect] = { list in
             guard let r = roi else { return list }
-            return list.filter { r.contains(CGPoint(x: $0.rect.midX, y: $0.rect.midY)) }
+            // 保留 bbox 与 ROI 有交集的缺陷（原"中心在 ROI 内"过严：缺陷横跨框边时被误丢）
+            return list.filter { $0.rect.intersects(r) }
         }
         // 优化点 B：若提供 ARKit 深度图 + 相机内参，逐缺陷做针孔反投影得公制 mm；
         //          否则保留原样（上层用 pxPerMm 标定或"未标定"显示）。

@@ -678,7 +678,7 @@ struct PhotoCheckView: View {
             return
         }
         // 阶段2：优先 Core ML 实例分割，未加载模型时自动回退 CV 规则。
-        // 多处框选：逐区域检测后合并（各区域独立判定，中心落在任一框内即保留）。
+        // 多处框选：逐区域检测后合并（各区域独立判定，bbox 与任一框有交集即保留）。
         var detects: [DetectedDefect] = []
         for r in rois {
             detects += MLDefectDetector.detect(in: image, roi: r)
