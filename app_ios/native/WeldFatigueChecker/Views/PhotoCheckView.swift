@@ -47,6 +47,9 @@ struct PhotoCheckView: View {
     @State private var mlInputSnapshot: UIImage? = nil
     @State private var showInputSnapshot: Bool = false
 
+    // 全图对照参考框：ROI 0 检出时补跑全图推理的检出（橙色虚线仅提示位置，不进缺陷列表/不评级）
+    @State private var fullImgRefBoxes: [DetectedDefect] = []
+
     var body: some View {
         Group {
             if hSize == .regular {
@@ -433,7 +436,8 @@ struct PhotoCheckView: View {
                                     if calPts.count == 2 { calRealMm = ""; showCalAlert = true }
                                 },
                                 roiMode: $roiMode,
-                                weldSeamROIs: $store.vision.weldSeamROIs
+                                weldSeamROIs: $store.vision.weldSeamROIs,
+                                fullRefBoxes: fullImgRefBoxes
                             )
                             .frame(maxWidth: .infinity)
                             .frame(height: canvasHeight(for: img))
@@ -663,6 +667,7 @@ struct PhotoCheckView: View {
 
     /// 照片载入后自动检测缺陷区域，标注位置 + 尺寸（bbox + location），并按当前板厚做 ISO 5817 评级
     private func autoAnnotate(image: UIImage) {
+        fullImgRefBoxes = []   // 每轮识别先清掉上一轮的全图参考框
         // 焊缝区域闸门：未框选焊缝时不自动识别，避免把非焊缝区域（高光/纹理）误报为缺陷
         let rois = store.vision.weldSeamROIs
         guard !rois.isEmpty else {
@@ -684,6 +689,8 @@ struct PhotoCheckView: View {
         let roiLowConfText = MLDefectDetector.lastLowConfText
         let roiDroppedBox = MLDefectDetector.lastDroppedBoxCount
         mlInputSnapshot = MLDefectDetector.lastInputSnapshot
+        // Top 原始分若全为 good_weld（负类）→ 模型把框内判成"合格焊道"，即完全没学到此类实拍缺陷特征
+        let roiTopAllGoodWeld = MLDefectDetector.lastRawScores.prefix(3).allSatisfy { $0.cls == "good_weld" }
         // 清掉上一张照片留下的自动框（保留手动添加的缺陷）
         store.vision.imperfections.removeAll { $0.bbox != nil }
         let ppm = store.photoPxPerMm
@@ -710,11 +717,14 @@ struct PhotoCheckView: View {
         if detects.isEmpty {
             let full = MLDefectDetector.detect(in: image, maxCount: 8, roi: nil)
             if !full.isEmpty {
+                // 全图检出画成橙色虚线参考框（fullImgRefBoxes），让文字与图对得上
+                fullImgRefBoxes = full
                 let kinds = Dictionary(grouping: full, by: { $0.type })
                     .map { "\(AnnotationMarker.shortLabel($0.key))×\($0.value.count)" }
                     .sorted().joined(separator: "、")
                 fullImgHint = "全图对照：模型在全图发现 \(full.count) 处疑似缺陷（\(kinds)），" +
-                    "但中心未落在框选区域内。请检查框选范围是否完整盖住焊缝缺陷（可追加框选，松手即自动重识别）。"
+                    "已用橙色虚线框在照片上标出（仅参考，不进缺陷列表、不评级）。" +
+                    "这些框的中心未落在你的框选区域内——请追加/调整框选盖住它们（松手即自动重识别）。"
             }
         }
         let engine = MLDefectDetector.engineName
@@ -738,12 +748,19 @@ struct PhotoCheckView: View {
         let dropHint: String = roiDroppedBox > 0
             ? "另有 \(roiDroppedBox) 个候选分数达标但输出框无效被丢弃（模型坐标输出异常信号）。"
             : ""
+        // 重训建议按图源分流：表面模型与 X 光模型的重训 notebook / 暖启动点完全不同
+        let retrainTip: String = MLDefectDetector.activeSource == .surface
+            ? "（表面模型合并重训：ml/modelscope_retrain_combined.ipynb，--init-from last_surface_best.pt）"
+            : "（X光模型合并训练：ml/ai_studio_train_merged_120.ipynb，--init-from last120.pt）"
+        let goodWeldNote = roiTopAllGoodWeld
+            ? "模型将框内判为「合格焊道」(good_weld)，即未识别出任何缺陷特征——实拍域与训练集差距过大的典型表现。"
+            : ""
         store.autoState = (detects.isEmpty
             ? (fullImgHint.isEmpty
-                ? "框选区域内未检测到明显视觉异常（\(engine)，已按框选区域聚焦识别）。模型原始置信度 Top：\(roiScoresText)。\(lowHint)\(dropHint)\(diag)" +
+                ? "框选区域内未检测到明显视觉异常（\(engine)，已按框选区域聚焦识别）。模型原始置信度 Top：\(roiScoresText)。\(goodWeldNote)\(lowHint)\(dropHint)\(diag)" +
                   "核查两步：①点下方「🔬 模型实际看到的输入」确认送检图完整包含焊缝与缺陷（未包含=重新框选/追加框选）；" +
                   "②送检图正常但仍 0 检出且 Top<0.2，属现场照片与训练集域差距过大，需补真实场景照片重训" +
-                  "（合并训练：ml/ai_studio_train_merged_120.ipynb，--init-from last120.pt）。"
+                  retrainTip
                 : fullImgHint)
             : "已自动识别 \(detects.count) 处疑似缺陷（\(engine)，ROI 聚焦），位置与尺寸已在照片上标注。" +
               (ppm == nil
@@ -968,6 +985,8 @@ struct AnnotationPhotoView: View {
     // 焊缝区域(ROI)框选：多处框选（数组），检测只在任一区域内生效
     @Binding var roiMode: Bool
     @Binding var weldSeamROIs: [CGRect]
+    /// 全图对照参考框（橙色虚线，仅提示不评级）：ROI 0 检出时全图推理的检出位置
+    var fullRefBoxes: [DetectedDefect] = []
     @State private var roiDragStart: CGPoint? = nil
     @State private var roiDragCurrent: CGPoint? = nil
     @State private var roiHint: String = ""   // 框选方向/多选反馈
@@ -1047,6 +1066,25 @@ struct AnnotationPhotoView: View {
                         .padding(.horizontal, 5).padding(.vertical, 2)
                         .background(Color.blue.opacity(0.9), in: RoundedRectangle(cornerRadius: 5))
                         .position(x: (ax + bx) / 2, y: (ay + by) / 2 - 12)
+                }
+
+                // 全图对照参考框（橙色虚线）：ROI 0 检出时全图推理的检出位置，
+                // 仅提示"缺陷在哪"，不进缺陷列表、不评级（与文字提示一一对应）
+                ForEach(Array(fullRefBoxes.enumerated()), id: \.offset) { _, d in
+                    let bx = rect.minX + d.rect.minX * rect.width
+                    let by = rect.minY + d.rect.minY * rect.height
+                    let bw = max(d.rect.width * rect.width, 12)
+                    let bh = max(d.rect.height * rect.height, 12)
+                    Rectangle()
+                        .stroke(Color.orange, style: StrokeStyle(lineWidth: 2, dash: [5, 4]))
+                        .frame(width: bw, height: bh)
+                        .position(x: bx + bw / 2, y: by + bh / 2)
+                    Text("全图·\(AnnotationMarker.shortLabel(d.type))")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 4).padding(.vertical, 1)
+                        .background(Color.orange.opacity(0.85), in: RoundedRectangle(cornerRadius: 4))
+                        .position(x: bx + bw / 2, y: max(rect.minY + 10, by - 9))
                 }
 
                 // 焊缝区域(ROI)叠层：已提交（绿虚线，支持多处）+ 拖拽中（绿实线）

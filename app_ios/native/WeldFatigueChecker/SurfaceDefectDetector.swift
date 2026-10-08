@@ -473,7 +473,9 @@ struct SurfaceDefectDetector {
             if bestScore >= threshold(for: clsName) {
                 let type = labelMap[clsName] ?? clsName
                 cands.append((rect, type, CGSize(width: w * side, height: h * side), bestScore))
-            } else if bestScore >= 0.05 {
+            } else if bestScore >= 0.05, clsName != "good_weld" {
+                // good_weld 是负类（合格焊道）：低分也不进"低分疑似缺陷候选"，
+                // 否则提示文案会出现"低分候选：good_weld 0.06"这类误导信息
                 lowConf.append((clsName, bestScore))
             }
         }
