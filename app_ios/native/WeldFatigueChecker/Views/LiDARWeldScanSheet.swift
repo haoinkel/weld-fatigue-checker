@@ -193,6 +193,51 @@ final class WeldScanCoordinator {
         guard let d = driftFromAnchorMeters() else { return false }
         return d > Self.driftThresholdM
     }
+
+    // MARK: - 优化点 F：实时 AR 3D 锚定标注（链路第⑤步：标注钉在工件表面）
+    // 用 RealityKit 锚点把缺陷标签按真实世界坐标固定在工件上；用户移动设备时标注随工件静止。
+    private var defectAnchors: [AnchorEntity] = []
+
+    /// 归一化图像点(u,v∈0..1, 原点左上, y 向下) + 深度图 + AR 帧 → 真实世界坐标(米)。
+    /// 用彩色相机内参做针孔反投影, 再乘 AR 相机世界变换。深度缺失返回 nil(上层仅保留 2D 清单)。
+    static func worldPoint(normalized point: CGPoint, depth: CVPixelBuffer, frame: ARFrame) -> SIMD3<Float>? {
+        guard let dM = MetricSizer.depthMeters(at: point, in: depth), dM > 0, dM.isFinite else { return nil }
+        let intr = frame.camera.intrinsics
+        let fx = Double(intr.columns.0.x), fy = Double(intr.columns.1.y)
+        let cx = Double(intr.columns.2.x), cy = Double(intr.columns.2.y)
+        guard fx > 0, fy > 0 else { return nil }
+        let W = Double(CVPixelBufferGetWidth(depth)), H = Double(CVPixelBufferGetHeight(depth))
+        let u = point.x * W, v = point.y * H
+        let xCam = Float((u - cx) / fx * dM)
+        let yCam = Float(-(v - cy) / fy * dM)   // 图像 y 向下 → 相机 y 向上
+        let zCam = Float(dM)
+        let world = frame.camera.transform * SIMD4<Float>(xCam, yCam, zCam, 1)
+        return SIMD3<Float>(world.x, world.y, world.z)
+    }
+
+    /// 在真实世界坐标处放置缺陷标注（小球 + 文字），随工件静止。
+    func addDefectAnchor(world: SIMD3<Float>, label: String, color: UIColor) {
+        guard let arView = arView else { return }
+        let anchor = AnchorEntity(world: Transform(translation: world))
+        let sphere = ModelEntity(mesh: .generateSphere(radius: 0.008),
+                                materials: [SimpleMaterial(color: color, roughness: 0.4, isMetallic: false)])
+        let textMesh = MeshResource.generateText(label, extrudedDepth: 0.001,
+                                                 font: .systemFont(ofSize: 0.035),
+                                                 containerFrame: .zero, alignment: .center)
+        let text = ModelEntity(mesh: textMesh, materials: [UnlitMaterial(color: color)])
+        text.position = [0, 0.03, 0]   // 球上方 3 cm
+        anchor.addChild(sphere)
+        anchor.addChild(text)
+        arView.scene.addAnchor(anchor)
+        defectAnchors.append(anchor)
+    }
+
+    /// 清除所有已放置的 3D 标注
+    func clearDefectAnchors() {
+        guard let arView = arView else { defectAnchors.removeAll(); return }
+        for a in defectAnchors { arView.scene.removeAnchor(a) }
+        defectAnchors.removeAll()
+    }
 }
 
 // MARK: - ARView 容器
@@ -317,6 +362,10 @@ struct LiDARWeldScanSheet: View {
                     if recognizedCount > 0 {
                         Button("完成并返回") { dismiss() }
                             .buttonStyle(.borderedProminent).tint(.green)
+                        Button(action: { WeldScanCoordinator.shared.clearDefectAnchors() }) {
+                            Label("清除 3D 标注", systemImage: "xmark.circle.fill")
+                        }
+                        .buttonStyle(.bordered).tint(.white)
                     }
                 }
                 .padding(12)
@@ -325,7 +374,7 @@ struct LiDARWeldScanSheet: View {
         }
         .statusBarHidden(true)
         .onAppear { session.start() }
-        .onDisappear { session.stop() }
+        .onDisappear { WeldScanCoordinator.shared.clearDefectAnchors(); session.stop() }
     }
 
     private func runScan() {
@@ -333,6 +382,7 @@ struct LiDARWeldScanSheet: View {
         // 优化点 E：若用户未手动锁定对齐，则以此刻为锚（扫描为单帧抓取，瞬时漂移≈0）
         if WeldScanCoordinator.shared.anchorTransform == nil { WeldScanCoordinator.shared.setAnchor() }
         summary = "正在读取 LiDAR 深度剖面…"
+        WeldScanCoordinator.shared.clearDefectAnchors()   // 重新扫描前清掉旧 3D 标注
         // 深度抓取需在主线程 AR 会话中，UI 反馈稍后给结果
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             guard let band = WeldScanCoordinator.shared.captureProfileBand(orientation: orientation) else {
@@ -386,8 +436,27 @@ struct LiDARWeldScanSheet: View {
                                                   location: CGPoint(x: d.rect.midX, y: d.rect.midY),
                                                   bbox: d.rect, pixelSize: d.pixelSize))
                         }
+                        // 优化点 F：彩色帧融合缺陷按真实世界坐标钉在工件表面（AR 叠加）
+                        for d in photoDets {
+                            let c = CGPoint(x: d.rect.midX, y: d.rect.midY)
+                            if let wp = WeldScanCoordinator.worldPoint(normalized: c, depth: depthPB, frame: frame) {
+                                let mm = d.metric.map { $0.primaryMm(type: d.type) } ?? 0
+                                let lbl = "\(d.type) \(String(format: "%.1f", mm))mm"
+                                WeldScanCoordinator.shared.addDefectAnchor(world: wp, label: lbl, color: .systemYellow)
+                            }
+                        }
                         if !photoDets.isEmpty {
                             autoScaledNote += "\n（LiDAR 融合：彩色帧缺陷已识别并深度反投影得 mm，共 \(photoDets.count) 项）"
+                        }
+                    }
+                // 优化点 F：深度剖面候选也锚定在扫描中线附近（不依赖彩色帧）
+                if let dd = frame.capturedDepthData {
+                    let dpb = WeldScanCoordinator.depthMapMeters(dd)
+                    for (i, c) in cands.enumerated() {
+                        let p = CGPoint(x: 0.5, y: 0.5 + Double(i) * 0.05)
+                        if let wp = WeldScanCoordinator.worldPoint(normalized: p, depth: dpb, frame: frame) {
+                            let lbl = "\(c.label) \(String(format: "%.1f", c.sizeMm))mm"
+                            WeldScanCoordinator.shared.addDefectAnchor(world: wp, label: lbl, color: .systemOrange)
                         }
                     }
                 }
