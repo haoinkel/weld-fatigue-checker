@@ -641,6 +641,14 @@ struct PhotoCheckView: View {
                     .font(.subheadline.bold())
                     .foregroundStyle(ok ? Theme.ok : Theme.danger)
             }
+            // DimeVision 风格：每个缺陷给一句"下一步怎么修"教练式文案，降低标准术语门槛
+            let coach = DefectCoaching.coaching(for: imp.type)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("成因").font(.caption2.bold()).foregroundStyle(Theme.textSecondary)
+                Text(coach.why).font(.caption).foregroundStyle(Theme.textSecondary)
+                Text("下一步怎么修").font(.caption2.bold()).foregroundStyle(Theme.textPrimary).padding(.top, 2)
+                Text(coach.fix).font(.caption).foregroundStyle(Theme.textPrimary)
+            }
         }
         .techCard(glow: true)
     }
@@ -947,6 +955,12 @@ struct ImperfectionRow: View {
                 .help("开启「图上标注模式」后，点照片即可把此缺陷定位到该位置")
             }
 
+            // DimeVision 风格：行内一句"下一步怎么修"简写，便于列表快速浏览
+            if store.vision.imperfections.indices.contains(index) {
+                let c = DefectCoaching.coaching(for: store.vision.imperfections[index].type)
+                Text(c.fix).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
+            }
+
             // 评级说明（仅在有评级结果时显示）
             if let g = gradeSafe, let lt = limitTextSafe {
                 let ok = acceptedSafe ?? false
@@ -1042,7 +1056,8 @@ struct AnnotationPhotoView: View {
                             ? String(format: "%.1f mm", imp.sizeMm!)
                             : (longPx > 0 ? "\(Int(longPx)) px" : "")
                         let gradeTxt = imp.grade.map { " \($0)" } ?? ""
-                        Text("#\(i + 1) \(AnnotationMarker.shortLabel(imp.type)) \(sizeTxt)\(gradeTxt)")
+                        let verdictWord = imp.accepted.map { $0 ? "合格" : "超差" } ?? ""
+                        Text("#\(i + 1) \(AnnotationMarker.shortLabel(imp.type)) \(sizeTxt)\(gradeTxt) \(verdictWord)")
                             .font(.system(size: 11, weight: .bold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 5).padding(.vertical, 2)
@@ -1385,6 +1400,40 @@ struct SystemCameraPicker: UIViewControllerRepresentable {
 
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
             parent.dismiss()
+        }
+    }
+}
+
+// MARK: - DimeVision 风格：每个缺陷的"下一步怎么修"教练式文案
+/// 借鉴 DimeVision 的 "Fix <defect> — 第一次建议" 设计：对被识别的缺陷给出大白话的
+/// 成因 + 下一步修法，降低 ISO 5817 标准术语门槛，便于现场即时改进（仅文案，不改动评级逻辑）。
+struct DefectCoaching {
+    struct Item { let why: String; let fix: String }
+    static func coaching(for type: String) -> Item {
+        switch type {
+        case "undercut":
+            return Item(why: "焊趾处母材被电弧熔蚀下凹，常因电流过大、焊速过快或运条角度不当。",
+                        fix: "降低电流 / 放慢焊速，焊条与工件保持 10°–15° 后倾，让熔池边缘充分填满焊趾。")
+        case "porosity":
+            return Item(why: "熔池气体未逸出形成气孔，常因焊材受潮、保护气不足或母材有油污锈。",
+                        fix: "烘干焊条/焊丝，检查保护气流量与喷嘴是否堵塞，焊前清理坡口油污锈迹。")
+        case "overlap":
+            return Item(why: "焊缝金属未与母材熔合而搭叠，常因电流过小、焊速过慢或运条角度不对。",
+                        fix: "适当增大电流、加快焊速，压低电弧使熔池金属铺展熔合，避免堆高。")
+        case "crack":
+            return Item(why: "凝固或冷却应力超过金属强度产生裂纹，常因约束大、冷却快或母材可焊性差。",
+                        fix: "预热并控制层温、减小拘束、选用低氢焊材；裂纹须清除后补焊，不可带伤使用。")
+        case "unfused":
+            return Item(why: "焊道与母材或层间未熔合，常因热输入不足、坡口清理不净或运条偏移。",
+                        fix: "提高热输入、调整运条使电弧直击坡口根部，焊前彻底清理层间熔渣。")
+        case "excess_weld_metal":
+            return Item(why: "焊缝余高过大，常因填充过多或摆动不够，增大应力集中与疲劳风险。",
+                        fix: "控制填充量，收尾适当摆动摊平，使余高满足 h≤v·b+add 限值。")
+        case "linear_misalignment":
+            return Item(why: "两板错边，常因装配定位不准或拘束不足。",
+                        fix: "焊前用夹具对齐、点固，错边量控制在板厚容许范围内再施焊。")
+        default:
+            return Item(why: "未识别类型的缺陷。", fix: "结合 ISO 5817 与现场工艺核对缺陷性质后再处理。")
         }
     }
 }
