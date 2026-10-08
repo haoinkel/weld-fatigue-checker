@@ -532,6 +532,29 @@ struct PhotoCheckView: View {
                         }
                         Text("端侧＝离线 / 保密 / 零费用；云端＝联网高精度兜底（需配置服务端，未配置自动回落端侧）。无网时云端自动切回端侧。")
                             .font(.caption2).foregroundStyle(.secondary)
+
+                        // 云端视觉配置（仅云端/自动模式显示）：endpoint/apiKey/model 直写 UserDefaults
+                        if store.params.engineMode != "local" {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("云端视觉服务端配置").font(.subheadline.bold())
+                                TextField("API 端点", text: Binding(
+                                    get: { UserDefaults.standard.string(forKey: "cloudVisionEndpoint") ?? CloudVisionConfig.default.endpoint },
+                                    set: { UserDefaults.standard.set($0, forKey: "cloudVisionEndpoint") }))
+                                    .textInputAutocapitalization(.never)
+                                    .autocorrectionDisabled()
+                                SecureField("API Key", text: Binding(
+                                    get: { UserDefaults.standard.string(forKey: "cloudVisionApiKey") ?? "" },
+                                    set: { UserDefaults.standard.set($0, forKey: "cloudVisionApiKey") }))
+                                TextField("模型名", text: Binding(
+                                    get: { UserDefaults.standard.string(forKey: "cloudVisionModel") ?? CloudVisionConfig.default.model },
+                                    set: { UserDefaults.standard.set($0, forKey: "cloudVisionModel") }))
+                                    .textInputAutocapitalization(.never)
+                                    .autocorrectionDisabled()
+                                Text("默认通义 Qwen-VL（OpenAI 兼容格式亦兼容 GPT-4V 等）。照片/ROI 将上传至该服务端；工业保密件请谨慎开启云端模式。")
+                                    .font(.caption2).foregroundStyle(.secondary)
+                            }
+                            .techCard()
+                        }
                         HStack {
                             Image(systemName: "brain").foregroundStyle(.purple)
                             Toggle("使用 AI 模型识别", isOn: $useMLModel)
@@ -843,8 +866,9 @@ struct PhotoCheckView: View {
         let ppm = store.photoPxPerMm
         let t = store.vision.plateThicknessMm
         for d in detects {
-            let longPx = defectMeasurePx(type: d.type, pixelSize: d.pixelSize)
-            let sizeMm = ppm.map { Double(longPx) / $0 }
+            // 优先用云端/深度给的绝对 mm；否则回退像素尺度估算
+            let sizeMm: Double? = d.metric.map { $0.primaryMm(type: d.type) }
+                          ?? ppm.map { Double(defectMeasurePx(type: d.type, pixelSize: d.pixelSize)) / $0 }
             let center = CGPoint(x: d.rect.midX, y: d.rect.midY)
             var imp = ImperfectionInput(type: d.type, sizeMm: sizeMm, poreMm: nil,
                                         location: center, bbox: d.rect, pixelSize: d.pixelSize)
