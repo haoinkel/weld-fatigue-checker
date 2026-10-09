@@ -169,11 +169,11 @@ struct CloudVisionEngine: DefectDetectionEngine {
 /// 路由层：按设置 + 网络可达决定用哪个引擎；云端不可用（无网 / 未配置 / 错误）自动回落端侧。
 struct DetectionRouter {
     /// 端侧同步检测（逐 ROI 合并）。
-    static func localDetect(in image: UIImage, rois: [CGRect], maxCount: Int = 16) -> [DetectedDefect] {
+    static func localDetect(in image: UIImage, rois: [CGRect], maxCount: Int = 16) async -> [DetectedDefect] {
         var out: [DetectedDefect] = []
         let list = rois.isEmpty ? [CGRect(x: 0, y: 0, width: 1, height: 1)] : rois
         for r in list {
-            out += (try? LocalCoreMLEngine().detect(in: image, roi: r.isEmpty ? nil : r, maxCount: maxCount)) ?? []
+            out += (try? await LocalCoreMLEngine().detect(in: image, roi: r.isEmpty ? nil : r, maxCount: maxCount)) ?? []
         }
         return out
     }
@@ -193,17 +193,17 @@ struct DetectionRouter {
         async -> (defects: [DetectedDefect], source: String, note: String) {
         switch mode {
         case .local:
-            return (localDetect(in: image, rois: rois, maxCount: maxCount), "local", "")
+            return (await localDetect(in: image, rois: rois, maxCount: maxCount), "local", "")
         case .cloud:
             do {
                 let d = try await cloudDetect(in: image, rois: rois, maxCount: maxCount)
                 return (d, "cloud", "")
             } catch {
-                let fb = localDetect(in: image, rois: rois, maxCount: maxCount)
+                let fb = await localDetect(in: image, rois: rois, maxCount: maxCount)
                 return (fb, "local(fallback)", "云端不可用（\(errorDesc(error))），已自动回落端侧")
             }
         case .auto:
-            let local = localDetect(in: image, rois: rois, maxCount: maxCount)
+            let local = await localDetect(in: image, rois: rois, maxCount: maxCount)
             if isLowConfidence() {   // 端侧低置信 → 云端补检
                 if let cloud = try? await cloudDetect(in: image, rois: rois, maxCount: maxCount), !cloud.isEmpty {
                     return (cloud, "cloud", "端侧低置信，已用云端补检")

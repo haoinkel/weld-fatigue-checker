@@ -218,10 +218,10 @@ final class WeldScanCoordinator {
     /// 在真实世界坐标处放置缺陷标注（小球 + 文字），随工件静止。
     func addDefectAnchor(world: SIMD3<Float>, label: String, color: UIColor) {
         guard let arView = arView else { return }
-        let anchor = AnchorEntity(world: Transform(translation: world))
+        let anchor = AnchorEntity(world: world)
         let sphere = ModelEntity(mesh: .generateSphere(radius: 0.008),
                                 materials: [SimpleMaterial(color: color, roughness: 0.4, isMetallic: false)])
-        let textMesh = MeshResource.generateText(label, extrudedDepth: 0.001,
+        let textMesh = MeshResource.generateText(label, extrusionDepth: 0.001,
                                                  font: .systemFont(ofSize: 0.035),
                                                  containerFrame: .zero, alignment: .center)
         let text = ModelEntity(mesh: textMesh, materials: [UnlitMaterial(color: color)])

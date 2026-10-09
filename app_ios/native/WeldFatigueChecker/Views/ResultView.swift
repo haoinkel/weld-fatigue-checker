@@ -68,7 +68,7 @@ struct ResultView: View {
             }
 
             Text("② 表面缺陷（ISO 5817）").font(.subheadline.bold())
-            let photoGraded = store.vision.imperfections.enumerated().compactMap { $0.1.grade != nil ? $0.0 : nil }
+            let photoGraded: [Int] = store.vision.imperfections.enumerated().compactMap { $0.1.grade != nil ? $0.0 : nil }
             if result.imperfections.isEmpty && photoGraded.isEmpty {
                 Text("本次照片未检出可评级缺陷（ISO 5817 无可列项）。")
                     .font(.caption).foregroundStyle(Theme.textSecondary)
@@ -96,8 +96,9 @@ struct ResultView: View {
                 }
                 if !photoGraded.isEmpty {
                     Text("— 照片视觉识别 —").font(.caption2).foregroundStyle(Theme.textSecondary)
-                    ForEach(photoGraded, id: \.self) { i in
-                        let imp = store.vision.imperfections[i]
+                    ForEach(photoGraded.indices, id: \.self) { n in
+                        let idx = photoGraded[n]
+                        let imp = store.vision.imperfections[idx]
                         HStack(spacing: 8) {
                             Circle()
                                 .fill(imp.accepted == true ? Theme.ok : (imp.accepted == false ? Theme.danger : Theme.warn))
