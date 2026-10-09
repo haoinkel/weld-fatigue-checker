@@ -461,6 +461,7 @@ struct LiDARWeldScanSheet: View {
                     }
                 }
             }
+            }
             scanning = false
             recognizedCount = cands.count
             if cands.isEmpty {
