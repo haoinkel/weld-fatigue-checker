@@ -10,6 +10,7 @@ struct ContentView: View {
             Model3DView().tabItem { Label("STEP 模型", systemImage: "square.stack.3d.up") }
             LoadsAndResultView().tabItem { Label("荷载/结果", systemImage: "function") }
             StandardsView().tabItem { Label("标准包", systemImage: "books.vertical") }
+            WeldSpecView().tabItem { Label("焊接助手", systemImage: "wrench.and.screwdriver") }
         }
         .accentColor(Theme.cyan)
         .preferredColorScheme(.dark)
