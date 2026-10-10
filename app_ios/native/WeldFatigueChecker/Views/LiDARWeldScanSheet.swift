@@ -286,6 +286,7 @@ struct LiDARWeldScanSheet: View {
     @State private var scanning: Bool = false
     @State private var recognizedCount: Int = 0
     @State private var orientation: WeldOrientation = .auto
+    @State private var showCloudCfg: Bool = false   // 云端配置（模型/Key）sheet
 
     var body: some View {
         ZStack {
@@ -347,6 +348,28 @@ struct LiDARWeldScanSheet: View {
                     .pickerStyle(.segmented)
                     .padding(.horizontal, 4)
 
+                    // 检测引擎模式（端侧/云端/自动，与照片页同源）；runScan 读取 store.params.engineMode
+                    Picker("检测引擎", selection: $store.params.engineMode) {
+                        ForEach(DetectionEngineMode.allCases, id: \.self) { m in
+                            Text(m.label).tag(m.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal, 4)
+
+                    if store.params.engineMode != "local" {
+                        Button {
+                            showCloudCfg = true
+                        } label: {
+                            Label("云端配置（模型/Key）", systemImage: "server.rack")
+                                .font(.subheadline.bold())
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(Color.white.opacity(0.10), in: Capsule())
+                                .foregroundStyle(.cyan)
+                        }
+                    }
+
                     Button(action: runScan) {
                         Label(scanning ? "识别中…" : "扫描焊缝", systemImage: "waveform")
                             .font(.title2.bold())
@@ -375,6 +398,14 @@ struct LiDARWeldScanSheet: View {
         .statusBarHidden(true)
         .onAppear { session.start() }
         .onDisappear { WeldScanCoordinator.shared.clearDefectAnchors(); session.stop() }
+        // 云端配置 sheet（模型预设三选一 + endpoint/Key），与照片页共用 CloudVisionConfigView
+        .sheet(isPresented: $showCloudCfg) {
+            NavigationStack {
+                ScrollView { CloudVisionConfigView().padding() }
+                .navigationTitle("云端视觉配置")
+                .toolbar { Button("完成") { showCloudCfg = false } }
+            }
+        }
     }
 
     private func runScan() {

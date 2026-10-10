@@ -36,6 +36,15 @@
 		000000000000000000100037 /* Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000100036 /* Resources */; };
 		000000000000000000100049 /* WeldDefectSurfaceModel.mlpackage in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000100048 /* WeldDefectSurfaceModel.mlpackage */; };
 		00000000000000000010004B /* SurfaceDefectDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000010004A /* SurfaceDefectDetector.swift */; };
+		000000000000000000100053 /* WeldSpecCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000100052 /* WeldSpecCalculator.swift */; };
+		000000000000000000100055 /* Views/WeldSpecView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000100054 /* Views/WeldSpecView.swift */; };
+		000000000000000000100057 /* Views/DispositionMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000100056 /* Views/DispositionMapView.swift */; };
+		000000000000000000100059 /* Views/CloudVisionConfigView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000100058 /* Views/CloudVisionConfigView.swift */; };
+		00000000000000000010005B /* BuildInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000010005A /* BuildInfo.swift */; };
+		00000000000000000010005D /* ImagePreprocessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000010005C /* ImagePreprocessor.swift */; };
+		00000000000000000010005F /* JointInference.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000010005E /* JointInference.swift */; };
+		000000000000000000100061 /* MetricSizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000100060 /* MetricSizer.swift */; };
+		000000000000000000100063 /* VLMReportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000100062 /* VLMReportService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -72,6 +81,15 @@
 		000000000000000000100036 /* Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Resources; path = Resources; sourceTree = "<group>"; };
 		000000000000000000100038 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		000000000000000000100039 /* WeldFatigueChecker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; path = WeldFatigueChecker.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		000000000000000000100052 /* WeldSpecCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeldSpecCalculator.swift; sourceTree = "<group>"; };
+		000000000000000000100054 /* Views/WeldSpecView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/WeldSpecView.swift; sourceTree = "<group>"; };
+		000000000000000000100056 /* Views/DispositionMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/DispositionMapView.swift; sourceTree = "<group>"; };
+		000000000000000000100058 /* Views/CloudVisionConfigView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/CloudVisionConfigView.swift; sourceTree = "<group>"; };
+		00000000000000000010005A /* BuildInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildInfo.swift; sourceTree = "<group>"; };
+		00000000000000000010005C /* ImagePreprocessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImagePreprocessor.swift; sourceTree = "<group>"; };
+		00000000000000000010005E /* JointInference.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JointInference.swift; sourceTree = "<group>"; };
+		000000000000000000100060 /* MetricSizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetricSizer.swift; sourceTree = "<group>"; };
+		000000000000000000100062 /* VLMReportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VLMReportService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -115,7 +133,16 @@
 				000000000000000000100048,
 				000000000000000000100035,
 				000000000000000000100036,
-				000000000000000000100038
+				000000000000000000100038,
+				000000000000000000100052,
+				000000000000000000100054,
+				000000000000000000100056,
+				000000000000000000100058,
+				00000000000000000010005A,
+				00000000000000000010005C,
+				00000000000000000010005E,
+				000000000000000000100060,
+				000000000000000000100062
 		); path = WeldFatigueChecker; sourceTree = "<group>"; };
 		00000000000000000010003B /* Products */ = {isa = PBXGroup; children = (
 				000000000000000000100039,
@@ -178,6 +205,15 @@
 				000000000000000000100030,
 				000000000000000000100032,
 				00000000000000000010004B /* SurfaceDefectDetector.swift in Sources */,
+				000000000000000000100053,
+				000000000000000000100055,
+				000000000000000000100057,
+				000000000000000000100059,
+				00000000000000000010005B,
+				00000000000000000010005D,
+				00000000000000000010005F,
+				000000000000000000100061,
+				000000000000000000100063
 		); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 

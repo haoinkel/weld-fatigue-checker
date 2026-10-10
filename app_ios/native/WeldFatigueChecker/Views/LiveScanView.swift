@@ -25,6 +25,7 @@ struct LiveScanView: View {
     // 阶段2 引擎开关（与 PhotoCheckView 同来源）
     @State private var useMLModel: Bool = MLDefectDetector.useMLModel
     @State private var captureMsg: String = ""
+    @State private var showCloudCfg: Bool = false   // 云端配置（模型/Key）sheet
 
     // 焊缝区域(ROI)框选：拖拽期间记录起止屏幕点；提交后追加写入 scanner.rois 与 store
     @State private var roiDrawing: Bool = false
@@ -71,6 +72,14 @@ struct LiveScanView: View {
         // 照片页切换引擎模式时，实时扫描同步（云端/自动才走云端补检）
         .onChange(of: store.params.engineMode) { _, newMode in
             scanner.engineMode = DetectionEngineMode(rawValue: newMode) ?? .local
+        }
+        // 云端配置 sheet（模型预设三选一 + endpoint/Key），与照片页共用 CloudVisionConfigView
+        .sheet(isPresented: $showCloudCfg) {
+            NavigationStack {
+                ScrollView { CloudVisionConfigView().padding() }
+                .navigationTitle("云端视觉配置")
+                .toolbar { Button("完成") { showCloudCfg = false } }
+            }
         }
     }
 
@@ -336,6 +345,29 @@ struct LiveScanView: View {
                     .foregroundStyle(MLDefectDetector.isModelAvailable ? .green : .secondary)
             }
             .onChange(of: useMLModel) { _, v in MLDefectDetector.useMLModel = v }
+
+            // 检测引擎模式（端侧/云端/自动，与照片页同源）；切换即同步 scanner.engineMode
+            HStack {
+                Text("检测引擎").font(.subheadline)
+                Picker("检测引擎", selection: $store.params.engineMode) {
+                    ForEach(DetectionEngineMode.allCases, id: \.self) { m in
+                        Text(m.label).tag(m.rawValue)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: .infinity)
+            }
+            if scanner.engineMode != .local {
+                Button {
+                    showCloudCfg = true
+                } label: {
+                    Label("云端配置（模型/Key）", systemImage: "server.rack")
+                        .font(.subheadline.bold())
+                        .padding(.horizontal, 10).padding(.vertical, 7)
+                        .background(Color.white.opacity(0.10), in: Capsule())
+                        .foregroundStyle(.cyan)
+                }
+            }
 
             // 捕获按钮（大胶囊，蓝渐变）
             Button(action: captureCurrent) {

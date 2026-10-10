@@ -46,9 +46,6 @@ struct PhotoCheckView: View {
     // 缺陷处置地图 sheet（RQMS 思路：沿焊缝归集 + 处置判定）
     @State private var showDisposition: Bool = false
 
-    // 云端视觉配置卡折叠态：默认折叠防误触清空已填的端点/Key/模型名（值在 UserDefaults，折叠不影响存储）
-    @State private var cloudCfgExpanded: Bool = false
-
     // 诊断：模型实际看到的送检输入图（ROI 聚焦=裁剪+letterbox+CLAHE 后），点按放大核查
     @State private var mlInputSnapshot: UIImage? = nil
     @State private var showInputSnapshot: Bool = false
@@ -552,76 +549,9 @@ struct PhotoCheckView: View {
                         Text("端侧＝离线 / 保密 / 零费用；云端＝联网高精度兜底（需配置服务端，未配置自动回落端侧）。无网时云端自动切回端侧。")
                             .font(.caption2).foregroundStyle(.secondary)
 
-                        // 云端视觉配置（仅云端/自动模式显示）：endpoint/apiKey/model 直写 UserDefaults。
-                        // 默认折叠：标题行显示配置摘要，输入框不渲染 → 防误触把已填好的配置清掉。
-                        // 首次使用（Key 为空）自动展开引导填写；配好点标题行收起即可。
+                        // 云端视觉配置（仅云端/自动模式显示）：共用 CloudVisionConfigView（端点/Key/模型预设三选一）
                         if store.params.engineMode != "local" {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Button {
-                                    withAnimation(.easeInOut(duration: 0.2)) { cloudCfgExpanded.toggle() }
-                                } label: {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "chevron.right")
-                                            .font(.caption.bold())
-                                            .rotationEffect(.degrees(cloudCfgExpanded ? 90 : 0))
-                                        Text("云端视觉服务端配置").font(.subheadline.bold())
-                                        Spacer()
-                                        Text(cloudCfgSummary)
-                                            .font(.caption2)
-                                            .foregroundStyle(hasCloudKey ? Theme.ok : Theme.warn)
-                                            .lineLimit(1)
-                                    }
-                                }
-                                .buttonStyle(.plain)
-
-                                if cloudCfgExpanded {
-                                    TextField("API 端点", text: Binding(
-                                        get: { UserDefaults.standard.string(forKey: "cloudVisionEndpoint") ?? CloudVisionConfig.default.endpoint },
-                                        set: { UserDefaults.standard.set($0, forKey: "cloudVisionEndpoint") }))
-                                        .textInputAutocapitalization(.never)
-                                        .autocorrectionDisabled()
-                                    SecureField("API Key", text: Binding(
-                                        get: { UserDefaults.standard.string(forKey: "cloudVisionApiKey") ?? "" },
-                                        set: { UserDefaults.standard.set($0, forKey: "cloudVisionApiKey") }))
-                                    // 视觉模型预设三选一（当前/32B-Thinking/Kimi-K2.6）+ 自定义
-                                    let presets: [(id: String, label: String)] = [
-                                        ("Qwen/Qwen3-VL-32B-Instruct", "当前 · 32B 标准（快速）"),
-                                        ("Qwen/Qwen3-VL-32B-Thinking", "32B 思考（推理 · 精度更高）"),
-                                        ("Pro/moonshotai/Kimi-K2.6", "Kimi-K2.6（最强视觉 · 最慢最贵）")
-                                    ]
-                                    let customTag = "__custom__"
-                                    Picker("视觉模型", selection: Binding(
-                                        get: {
-                                            let m = UserDefaults.standard.string(forKey: "cloudVisionModel") ?? CloudVisionConfig.default.model
-                                            return presets.contains { $0.id == m } ? m : customTag
-                                        },
-                                        set: { if $0 != customTag { UserDefaults.standard.set($0, forKey: "cloudVisionModel") } }
-                                    )) {
-                                        ForEach(presets, id: \.id) { p in Text(p.label).tag(p.id) }
-                                        Text("自定义…").tag(customTag)
-                                    }
-                                    .pickerStyle(.menu)
-                                    TextField("模型名（可自定义直接改）", text: Binding(
-                                        get: { UserDefaults.standard.string(forKey: "cloudVisionModel") ?? CloudVisionConfig.default.model },
-                                        set: { UserDefaults.standard.set($0, forKey: "cloudVisionModel") }))
-                                        .textInputAutocapitalization(.never)
-                                        .autocorrectionDisabled()
-                                    HStack {
-                                        Text("OpenAI 兼容多模态端点。照片/ROI 将上传至该服务端；工业保密件请谨慎开启云端模式。")
-                                            .font(.caption2).foregroundStyle(.secondary)
-                                        Spacer()
-                                        Button("收起") {
-                                            withAnimation(.easeInOut(duration: 0.2)) { cloudCfgExpanded = false }
-                                        }
-                                        .font(.caption.bold())
-                                    }
-                                }
-                            }
-                            .techCard()
-                            .onAppear {
-                                // 首次使用（Key 为空）自动展开；已配置默认折叠防误删
-                                cloudCfgExpanded = (UserDefaults.standard.string(forKey: "cloudVisionApiKey") ?? "").isEmpty
-                            }
+                            CloudVisionConfigView().techCard()
                         }
                         HStack {
                             Image(systemName: "brain").foregroundStyle(.purple)
@@ -950,16 +880,6 @@ struct PhotoCheckView: View {
         store.autoState = (detects.isEmpty
             ? "云端模式：框选区域内未检测到缺陷。\(note)"
             : "云端识别 \(detects.count) 处缺陷（已联网服务端识别），位置框已在照片上标出，点行可看详情。\(note)") + "\n" + ISO5817Grader.ndtDisclaimer
-    }
-
-    /// 云端配置卡折叠态摘要：已配置显示模型名，未配置提示展开填写。
-    private var hasCloudKey: Bool {
-        !(UserDefaults.standard.string(forKey: "cloudVisionApiKey") ?? "").isEmpty
-    }
-    private var cloudCfgSummary: String {
-        guard hasCloudKey else { return "未配置 · 点此展开填写" }
-        let model = UserDefaults.standard.string(forKey: "cloudVisionModel") ?? CloudVisionConfig.default.model
-        return "已配置 · \(model)"
     }
 
     /// 板厚/类型/尺寸变化后，重新评级所有已测得尺寸的缺陷。
