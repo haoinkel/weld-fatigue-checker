@@ -93,11 +93,13 @@ struct CloudVisionEngine: DefectDetectionEngine {
         let b64 = jpeg.base64EncodedString()
         let sys = "你是一名资深焊接检验师(CWI)。仅识别焊缝表面可见缺陷；内部缺陷(深裂纹/深层未熔合)不可见，不要臆测。"
         let usr = "请严格输出 JSON，不要任何额外文字：{\"defects\":[{\"type\":\"标准英文名(undercut/porosity/crack/lack_of_fusion/excess_weld_metal/overlap/excessive_convexity/spatter/slag/incomplete_penetration/misalignment)\",\"confidence\":0到1,\"estSizeMm\":数值(缺陷主尺寸毫米),\"severity\":\"low|medium|high\",\"bbox\":[x,y,w,h]}]}。bbox 为必填项：相对本张送检图像宽高的归一化坐标，左上角为原点，四个值均为 0~1 的小数，w/h 为框宽高（例：[0.32,0.15,0.18,0.42]）。若无缺陷返回 {\"defects\":[]}。"
-        // 输出只是小 JSON，限制 max_tokens 避免模型冗长生成拖慢首包；硅基流 Qwen3 关掉思考进一步加速
+        // 输出只是小 JSON，限制 max_tokens 避免模型冗长生成拖慢首包
+        // Thinking 版模型（模型名含 "-Thinking"）：思考 token 计入输出预算，给更大 max_tokens 防 JSON 截断，且开启思考拿推理精度
+        let isThinkingModel = cfg.model.localizedCaseInsensitiveContains("-Thinking")
         var payload: [String: Any] = [
             "model": cfg.model,
             "temperature": 0.2,
-            "max_tokens": 768,
+            "max_tokens": isThinkingModel ? 2048 : 768,
             "messages": [
                 ["role": "system", "content": sys],
                 ["role": "user", "content": [
@@ -107,7 +109,8 @@ struct CloudVisionEngine: DefectDetectionEngine {
             ]
         ]
         if cfg.endpoint.contains("siliconflow") {
-            payload["chat_template_kwargs"] = ["enable_thinking": false]
+            // 按模型名自适应：-Thinking 开思考（推理精度），其余关思考（加速）
+            payload["chat_template_kwargs"] = ["enable_thinking": isThinkingModel]
         }
         return try? JSONSerialization.data(withJSONObject: payload)
     }
