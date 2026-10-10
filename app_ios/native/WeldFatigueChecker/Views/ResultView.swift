@@ -96,7 +96,7 @@ struct ResultView: View {
                 }
                 if !photoGraded.isEmpty {
                     Text("— 照片视觉识别 —").font(.caption2).foregroundStyle(Theme.textSecondary)
-                    ForEach(photoGraded.indices, id: \.self) { n in
+                    ForEach(0..<photoGraded.count, id: \.self) { n in
                         let idx = photoGraded[n]
                         let imp = store.vision.imperfections[idx]
                         HStack(spacing: 8) {
