@@ -43,6 +43,9 @@ struct PhotoCheckView: View {
     // 检测历史 sheet
     @State private var showHistory: Bool = false
 
+    // 缺陷处置地图 sheet（RQMS 思路：沿焊缝归集 + 处置判定）
+    @State private var showDisposition: Bool = false
+
     // 云端视觉配置卡折叠态：默认折叠防误触清空已填的端点/Key/模型名（值在 UserDefaults，折叠不影响存储）
     @State private var cloudCfgExpanded: Bool = false
 
@@ -226,10 +229,23 @@ struct PhotoCheckView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .accessibilityLabel("查看检测历史记录")
+
+                Button {
+                    showDisposition = true
+                } label: {
+                    Label("处置地图", systemImage: "map")
+                        .font(.caption)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .accessibilityLabel("查看缺陷处置位置地图")
             }
         }
         .sheet(isPresented: $showHistory) {
             HistorySheet().environmentObject(store)
+        }
+        .sheet(isPresented: $showDisposition) {
+            DispositionMapView(imperfections: store.vision.imperfections)
         }
     }
 
