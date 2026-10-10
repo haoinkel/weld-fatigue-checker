@@ -62,7 +62,7 @@ struct CloudVisionEngine: DefectDetectionEngine {
             throw DetectionError.cloudNotImplemented
         }
         guard let raw = String(data: data, encoding: .utf8) else { throw DetectionError.cloudNotImplemented }
-        return try Self.parse(raw, image: image, maxCount: maxCount)
+        return try Self.parse(raw, image: image, maxCount: maxCount, roi: roi)
     }
 
     // MARK: - 请求体构造（OpenAI 兼容多模态）
@@ -71,7 +71,7 @@ struct CloudVisionEngine: DefectDetectionEngine {
         guard let jpeg = send.jpegData(compressionQuality: 0.82) else { return nil }
         let b64 = jpeg.base64EncodedString()
         let sys = "你是一名资深焊接检验师(CWI)。仅识别焊缝表面可见缺陷；内部缺陷(深裂纹/深层未熔合)不可见，不要臆测。"
-        let usr = "请严格输出 JSON，不要任何额外文字：{\"defects\":[{\"type\":\"标准英文名(undercut/porosity/crack/lack_of_fusion/excess_weld_metal/overlap/excessive_convexity/spatter/slag/incomplete_penetration/misalignment)\",\"confidence\":0到1,\"estSizeMm\":数值(缺陷主尺寸毫米),\"severity\":\"low|medium|high\",\"bbox\":[x,y,w,h]可选,归一化0-1左上原点}]}。若无缺陷返回 {\"defects\":[]}。"
+        let usr = "请严格输出 JSON，不要任何额外文字：{\"defects\":[{\"type\":\"标准英文名(undercut/porosity/crack/lack_of_fusion/excess_weld_metal/overlap/excessive_convexity/spatter/slag/incomplete_penetration/misalignment)\",\"confidence\":0到1,\"estSizeMm\":数值(缺陷主尺寸毫米),\"severity\":\"low|medium|high\",\"bbox\":[x,y,w,h]}]}。bbox 为必填项：相对本张送检图像宽高的归一化坐标，左上角为原点，四个值均为 0~1 的小数，w/h 为框宽高（例：[0.32,0.15,0.18,0.42]）。若无缺陷返回 {\"defects\":[]}。"
         let payload: [String: Any] = [
             "model": cfg.model,
             "temperature": 0.2,
@@ -87,7 +87,9 @@ struct CloudVisionEngine: DefectDetectionEngine {
     }
 
     // MARK: - 响应解析
-    static func parse(_ raw: String, image: UIImage, maxCount: Int) throws -> [DetectedDefect] {
+    /// roi：本次送检用的 ROI（整图归一化 0~1）。云端看到的是 ROI 裁图，模型返回的 bbox 相对裁图，
+    /// 必须映射回整图坐标，否则照片叠层画错位置/画出画面外（真机实证）。
+    static func parse(_ raw: String, image: UIImage, maxCount: Int, roi: CGRect? = nil) throws -> [DetectedDefect] {
         guard let data = raw.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let choices = json["choices"] as? [[String: Any]],
@@ -118,19 +120,48 @@ struct CloudVisionEngine: DefectDetectionEngine {
             let rawType = (d["type"] as? String) ?? "defect"
             let type = Self.mapType(rawType)
             let est = (d["estSizeMm"] as? NSNumber)?.doubleValue ?? 0
-            let bbox = (d["bbox"] as? [NSNumber])?.map { CGFloat($0.doubleValue) }
-            let rect: CGRect
-            if let b = bbox, b.count == 4, b[2] > 0, b[3] > 0 {
-                rect = CGRect(x: b[0], y: b[1], width: b[2], height: b[3])
-            } else {
-                rect = CGRect(x: 0, y: 0, width: 1, height: 1)
-            }
+            // bbox 统一为整图归一化 0~1（兼容 0~1 / 0~1000 / 绝对像素三种量纲 + ROI 映射回整图）
+            let nums = (d["bbox"] as? [NSNumber])?.map { $0.doubleValue } ?? []
+            let rect = Self.normalizedBBox(nums, image: image, roi: roi)
+                ?? CGRect(x: 0, y: 0, width: 1, height: 1)
             // 云端给的是绝对 mm 估算，直接进 DefectMetric（优先于像素尺度估算）
             let metric: DefectMetric? = est > 0 ? DefectMetric(lengthMm: est, widthMm: est, standoffM: 0, method: .scaleBased) : nil
             out.append(DetectedDefect(rect: rect, type: type, pixelSize: CGSize(width: iw, height: ih), metric: metric))
             if out.count >= maxCount { break }
         }
         return out
+    }
+
+    /// 模型 bbox 量纲自适应 → 整图归一化 0~1 矩形。
+    /// 兼容三种常见输出：①0~1 归一化（按提示词要求）；②0~1000（Qwen 系 grounding 原生格式）；
+    /// ③绝对像素（相对本次送检的 ROI 裁图）。识别失败的返回 nil（调用方画全图占位框）。
+    static func normalizedBBox(_ v: [Double], image: UIImage, roi: CGRect?) -> CGRect? {
+        guard v.count == 4 else { return nil }
+        var x = v[0], y = v[1], w = v[2], h = v[3]
+        guard x.isFinite, y.isFinite, w.isFinite, h.isFinite, w > 0, h > 0 else { return nil }
+        let m = max(x, y, w, h)
+        // 送检裁图像素尺寸（image.size 为点空间，ROI 为整图归一化，比值一致）
+        let sentW = roi.map { $0.width * image.size.width } ?? image.size.width
+        let sentH = roi.map { $0.height * image.size.height } ?? image.size.height
+        if m > 1.5 {
+            if x + w <= sentW + 2, y + h <= sentH + 2, m <= max(sentW, sentH) + 1 {
+                // ③绝对像素（相对送检裁图）
+                x /= sentW; y /= sentH; w /= sentW; h /= sentH
+            } else if m <= 1000 {
+                // ②Qwen 系 0~1000 grounding
+                x /= 1000; y /= 1000; w /= 1000; h /= 1000
+            } else {
+                return nil
+            }
+        }
+        // 裁图内归一化 → 整图归一化（并夹取到 0~1，容忍模型轻微出界）
+        func cl(_ t: Double) -> Double { min(1, max(0, t)) }
+        if let r = roi, !r.isEmpty {
+            return CGRect(x: cl(r.minX + x * r.width), y: cl(r.minY + y * r.height),
+                          width: min(1 - cl(r.minX + x * r.width), w * r.width),
+                          height: min(1 - cl(r.minY + y * r.height), h * r.height))
+        }
+        return CGRect(x: cl(x), y: cl(y), width: min(1 - cl(x), w), height: min(1 - cl(y), h))
     }
 
     /// 云端返回的缺陷类型名 → 本工程标准类型（对齐 ISO5817Grader.aliases）。
