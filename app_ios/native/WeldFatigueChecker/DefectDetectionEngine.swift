@@ -44,9 +44,10 @@ struct LocalCoreMLEngine: DefectDetectionEngine {
 /// 同样兼容 GPT-4V 等任意 OpenAI 兼容端点，只需在设置里换 endpoint + model + apiKey。
 /// apiKey 未配置即抛 cloudNotConfigured，由路由层捕获并自动回落端侧。
 struct CloudVisionEngine: DefectDetectionEngine {
-    /// 上传前最长边上限（px）。视觉模型识别焊缝缺陷无需原图 4032px 分辨率；
-    /// 缩到 1280 量级可将 base64 上传体积与视觉编码器 prefill 时间降约一个数量级。
-    static let uploadMaxSide: CGFloat = 1280
+    /// 上传前最长边上限（px）。1280 曾致小缺陷（气孔/细咬边）漏检、精度回退（真机反馈 2026-10-10），
+    /// 回调到 2048：像素面积是 1280 的 2.56 倍、细节显著保留，上传体积仍比原图 4032px 省 ~4 倍，加速大头不受影响。
+    /// ROI 裁图通常本就小于 2048，不会被二次缩放。
+    static let uploadMaxSide: CGFloat = 2048
 
     func detect(in image: UIImage, roi: CGRect?, maxCount: Int) async throws -> [DetectedDefect] {
         let cfg = CloudVisionConfig.load()
@@ -99,7 +100,7 @@ struct CloudVisionEngine: DefectDetectionEngine {
         var payload: [String: Any] = [
             "model": cfg.model,
             "temperature": 0.2,
-            "max_tokens": isThinkingModel ? 2048 : 768,
+            "max_tokens": isThinkingModel ? 2048 : 1280,
             "messages": [
                 ["role": "system", "content": sys],
                 ["role": "user", "content": [
