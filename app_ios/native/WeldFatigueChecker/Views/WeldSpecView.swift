@@ -80,7 +80,11 @@ struct WeldSpecView: View {
                                 : (st.state == "已过期" ? "xmark.seal.fill" : "exclamationmark.triangle.fill"))
                             .foregroundStyle(st.state == "有效" ? Theme.ok
                                              : (st.state == "已过期" ? Theme.danger : Theme.warn))
-                        Text("资质状态：\(st.state)" + (st.daysLeft.map { "（\($0 >= 0 ? "剩 \($0) 天" : "已超 \(-$0) 天")" ) ?? ""))
+                        let daysText: String = {
+                            guard let d = st.daysLeft else { return "" }
+                            return d >= 0 ? "（剩 \(d) 天）" : "（已超 \(-d) 天）"
+                        }()
+                        Text("资质状态：\(st.state)" + daysText)
                             .font(.subheadline.bold())
                             .foregroundStyle(st.state == "有效" ? Theme.ok
                                              : (st.state == "已过期" ? Theme.danger : Theme.warn))
