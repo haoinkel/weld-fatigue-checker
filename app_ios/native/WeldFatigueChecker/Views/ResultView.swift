@@ -102,7 +102,7 @@ struct ResultView: View {
                             Circle()
                                 .fill(imp.accepted == true ? Theme.ok : (imp.accepted == false ? Theme.danger : Theme.warn))
                                 .frame(width: 8, height: 8)
-                            Text(Theme.DefectTypes.label(imp.type)
+                            Text(DefectTypes.label(imp.type)
                                  + (imp.sizeMm != nil ? String(format: " %.1f mm", imp.sizeMm!) : ""))
                                 .font(.subheadline).foregroundStyle(Theme.textPrimary)
                             Spacer()
