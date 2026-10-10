@@ -1175,13 +1175,41 @@ struct AnnotationPhotoView: View {
                     .scaledToFit()
                     .frame(width: size.width, height: size.height)
 
-                // 自动识别框（橙色）：bbox + 类型 + 尺寸
+                // 自动识别框（橙色描边 + DimeVision 风格红色蒙皮）：bbox + 类型 + 尺寸
                 ForEach(Array(imperfections.enumerated()), id: \.offset) { i, imp in
                     if let bbox = imp.bbox {
                         let bx = rect.minX + bbox.minX * rect.width
                         let by = rect.minY + bbox.minY * rect.height
                         let bw = bbox.width * rect.width
                         let bh = bbox.height * rect.height
+                        // ① 蒙皮高亮：果冻状半透明覆层（渐变填充 + 软边发光），缺陷一眼可见
+                        let cr = min(bw, bh) * 0.28
+                        RoundedRectangle(cornerRadius: cr)
+                            .fill(LinearGradient(colors: [Color.red.opacity(0.55), Color.red.opacity(0.25)],
+                                                 startPoint: .top, endPoint: .bottom))
+                            .background(
+                                RoundedRectangle(cornerRadius: cr * 1.6)
+                                    .fill(Color.red.opacity(0.35))
+                                    .blur(radius: max(4, cr * 0.8))
+                            )
+                            .overlay(
+                                // 蒙皮上沿高光线，增强"覆层"质感
+                                Path { p in
+                                    p.move(to: CGPoint(x: bx + bw * 0.18, y: by + bh * 0.12))
+                                    p.addQuadCurve(to: CGPoint(x: bx + bw * 0.82, y: by + bh * 0.12),
+                                                   control: CGPoint(x: bx + bw / 2, y: by + bh * 0.02))
+                                }
+                                .stroke(Color.white.opacity(0.5), style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                            )
+                            .frame(width: bw, height: bh)
+                            .position(x: bx + bw / 2, y: by + bh / 2)
+                        // ② 编号标签 → 缺陷引线（DimeVision 式标注锚点）
+                        let labelY = max(rect.minY + 12, by - 10)
+                        Path { p in
+                            p.move(to: CGPoint(x: bx + bw / 2, y: labelY + 9))
+                            p.addLine(to: CGPoint(x: bx + bw / 2, y: by + 2))
+                        }
+                        .stroke(Theme.defect, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
                         Rectangle()
                             .stroke(Theme.defect, lineWidth: 2)
                             .frame(width: bw, height: bh)
@@ -1197,7 +1225,7 @@ struct AnnotationPhotoView: View {
                             .foregroundStyle(.white)
                             .padding(.horizontal, 5).padding(.vertical, 2)
                             .background(Theme.defect.opacity(0.9), in: RoundedRectangle(cornerRadius: 5))
-                            .position(x: bx + bw / 2, y: max(rect.minY + 12, by - 10))
+                            .position(x: bx + bw / 2, y: labelY)
                     } else if let loc = imp.location {
                         // 手动定位点（红）
                         let x = rect.minX + loc.x * rect.width
