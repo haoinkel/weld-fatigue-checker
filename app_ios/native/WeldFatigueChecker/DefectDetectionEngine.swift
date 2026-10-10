@@ -44,11 +44,18 @@ struct LocalCoreMLEngine: DefectDetectionEngine {
 /// 同样兼容 GPT-4V 等任意 OpenAI 兼容端点，只需在设置里换 endpoint + model + apiKey。
 /// apiKey 未配置即抛 cloudNotConfigured，由路由层捕获并自动回落端侧。
 struct CloudVisionEngine: DefectDetectionEngine {
+    /// 上传前最长边上限（px）。视觉模型识别焊缝缺陷无需原图 4032px 分辨率；
+    /// 缩到 1280 量级可将 base64 上传体积与视觉编码器 prefill 时间降约一个数量级。
+    static let uploadMaxSide: CGFloat = 1280
+
     func detect(in image: UIImage, roi: CGRect?, maxCount: Int) async throws -> [DetectedDefect] {
         let cfg = CloudVisionConfig.load()
         guard !cfg.apiKey.isEmpty else { throw DetectionError.cloudNotConfigured }
+        // 裁到 ROI（若无 ROI 用全图），再缩放到上传上限 —— 减少上传量 + 加速视觉 prefill
+        let sent = roi.map { Self.crop(image, roi: $0) } ?? image
+        let sentImg = Self.downscale(sent, maxSide: Self.uploadMaxSide)
         guard let url = URL(string: cfg.endpoint),
-              let body = Self.requestBody(image: image, roi: roi, cfg: cfg) else {
+              let body = Self.requestBody(image: sentImg, cfg: cfg) else {
             throw DetectionError.cloudNotConfigured
         }
         var req = URLRequest(url: url)
@@ -62,19 +69,35 @@ struct CloudVisionEngine: DefectDetectionEngine {
             throw DetectionError.cloudNotImplemented
         }
         guard let raw = String(data: data, encoding: .utf8) else { throw DetectionError.cloudNotImplemented }
-        return try Self.parse(raw, image: image, maxCount: maxCount, roi: roi)
+        // sentImg.size 为模型实际看到的像素尺寸（绝对像素量纲归一化用）；image 为原始整图（bbox 映射用）
+        return try Self.parse(raw, image: image, sentSize: sentImg.size, maxCount: maxCount, roi: roi)
+    }
+
+    // MARK: - 缩放（上传前降分辨率，不影响归一化坐标逻辑）
+    static func downscale(_ img: UIImage, maxSide: CGFloat) -> UIImage {
+        let w = img.size.width, h = img.size.height
+        let longest = max(w, h)
+        guard longest > maxSide else { return img }
+        let scale = maxSide / longest
+        let newW = max(1, Int(w * scale)), newH = max(1, Int(h * scale))
+        let fmt = UIGraphicsImageRenderer(size: CGSize(width: newW, height: newH))
+        return fmt.image { _ in
+            img.draw(in: CGRect(x: 0, y: 0, width: newW, height: newH))
+        }
     }
 
     // MARK: - 请求体构造（OpenAI 兼容多模态）
-    static func requestBody(image: UIImage, roi: CGRect?, cfg: CloudVisionConfig) -> Data? {
-        let send = roi.map { Self.crop(image, roi: $0) } ?? image
-        guard let jpeg = send.jpegData(compressionQuality: 0.82) else { return nil }
+    /// 入参 image 应为已裁好/缩好的送检图；bbox 归一化 0~1 由模型相对此图输出。
+    static func requestBody(image: UIImage, cfg: CloudVisionConfig) -> Data? {
+        guard let jpeg = image.jpegData(compressionQuality: 0.82) else { return nil }
         let b64 = jpeg.base64EncodedString()
         let sys = "你是一名资深焊接检验师(CWI)。仅识别焊缝表面可见缺陷；内部缺陷(深裂纹/深层未熔合)不可见，不要臆测。"
         let usr = "请严格输出 JSON，不要任何额外文字：{\"defects\":[{\"type\":\"标准英文名(undercut/porosity/crack/lack_of_fusion/excess_weld_metal/overlap/excessive_convexity/spatter/slag/incomplete_penetration/misalignment)\",\"confidence\":0到1,\"estSizeMm\":数值(缺陷主尺寸毫米),\"severity\":\"low|medium|high\",\"bbox\":[x,y,w,h]}]}。bbox 为必填项：相对本张送检图像宽高的归一化坐标，左上角为原点，四个值均为 0~1 的小数，w/h 为框宽高（例：[0.32,0.15,0.18,0.42]）。若无缺陷返回 {\"defects\":[]}。"
-        let payload: [String: Any] = [
+        // 输出只是小 JSON，限制 max_tokens 避免模型冗长生成拖慢首包；硅基流 Qwen3 关掉思考进一步加速
+        var payload: [String: Any] = [
             "model": cfg.model,
             "temperature": 0.2,
+            "max_tokens": 768,
             "messages": [
                 ["role": "system", "content": sys],
                 ["role": "user", "content": [
@@ -83,13 +106,16 @@ struct CloudVisionEngine: DefectDetectionEngine {
                 ]]
             ]
         ]
+        if cfg.endpoint.contains("siliconflow") {
+            payload["chat_template_kwargs"] = ["enable_thinking": false]
+        }
         return try? JSONSerialization.data(withJSONObject: payload)
     }
 
     // MARK: - 响应解析
     /// roi：本次送检用的 ROI（整图归一化 0~1）。云端看到的是 ROI 裁图，模型返回的 bbox 相对裁图，
     /// 必须映射回整图坐标，否则照片叠层画错位置/画出画面外（真机实证）。
-    static func parse(_ raw: String, image: UIImage, maxCount: Int, roi: CGRect? = nil) throws -> [DetectedDefect] {
+    static func parse(_ raw: String, image: UIImage, sentSize: CGSize, maxCount: Int, roi: CGRect? = nil) throws -> [DetectedDefect] {
         guard let data = raw.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let choices = json["choices"] as? [[String: Any]],
@@ -122,7 +148,7 @@ struct CloudVisionEngine: DefectDetectionEngine {
             let est = (d["estSizeMm"] as? NSNumber)?.doubleValue ?? 0
             // bbox 统一为整图归一化 0~1（兼容 0~1 / 0~1000 / 绝对像素三种量纲 + ROI 映射回整图）
             let nums = (d["bbox"] as? [NSNumber])?.map { $0.doubleValue } ?? []
-            let rect = Self.normalizedBBox(nums, image: image, roi: roi)
+            let rect = Self.normalizedBBox(nums, sentSize: sentSize, roi: roi)
                 ?? CGRect(x: 0, y: 0, width: 1, height: 1)
             // 云端给的是绝对 mm 估算，直接进 DefectMetric（优先于像素尺度估算）
             let metric: DefectMetric? = est > 0 ? DefectMetric(lengthMm: est, widthMm: est, standoffM: 0, method: .scaleBased) : nil
@@ -135,14 +161,14 @@ struct CloudVisionEngine: DefectDetectionEngine {
     /// 模型 bbox 量纲自适应 → 整图归一化 0~1 矩形。
     /// 兼容三种常见输出：①0~1 归一化（按提示词要求）；②0~1000（Qwen 系 grounding 原生格式）；
     /// ③绝对像素（相对本次送检的 ROI 裁图）。识别失败的返回 nil（调用方画全图占位框）。
-    static func normalizedBBox(_ v: [Double], image: UIImage, roi: CGRect?) -> CGRect? {
+    static func normalizedBBox(_ v: [Double], sentSize: CGSize, roi: CGRect?) -> CGRect? {
         guard v.count == 4 else { return nil }
         var x = v[0], y = v[1], w = v[2], h = v[3]
         guard x.isFinite, y.isFinite, w.isFinite, h.isFinite, w > 0, h > 0 else { return nil }
         let m = max(x, y, w, h)
-        // 送检裁图像素尺寸（image.size 为点空间，ROI 为整图归一化，比值一致）
-        let sentW = roi.map { $0.width * image.size.width } ?? image.size.width
-        let sentH = roi.map { $0.height * image.size.height } ?? image.size.height
+        // 模型实际看到的送检图像素尺寸（已缩放到 uploadMaxSide），绝对像素量纲归一化用它
+        let sentW = sentSize.width
+        let sentH = sentSize.height
         if m > 1.5 {
             if x + w <= sentW + 2, y + h <= sentH + 2, m <= max(sentW, sentH) + 1 {
                 // ③绝对像素（相对送检裁图）
@@ -209,13 +235,24 @@ struct DetectionRouter {
         return out
     }
 
-    /// 云端异步检测。
+    /// 云端异步检测。多 ROI 用任务组并行请求（各区域相互独立），显著缩短多框总耗时。
     static func cloudDetect(in image: UIImage, rois: [CGRect], maxCount: Int = 16) async throws -> [DetectedDefect] {
-        var out: [DetectedDefect] = []
         let list = rois.isEmpty ? [CGRect(x: 0, y: 0, width: 1, height: 1)] : rois
-        for r in list {
-            out += try await CloudVisionEngine().detect(in: image, roi: r.isEmpty ? nil : r, maxCount: maxCount)
+        var out: [DetectedDefect] = []
+        var err: Error?
+        await withThrowingTaskGroup(of: [DetectedDefect].self) { group in
+            for r in list {
+                group.addTask {
+                    try await CloudVisionEngine().detect(in: image, roi: r.isEmpty ? nil : r, maxCount: maxCount)
+                }
+            }
+            do {
+                for try await res in group { out += res }
+            } catch {
+                err = error
+            }
         }
+        if out.isEmpty, let e = err { throw e }
         return out
     }
 
