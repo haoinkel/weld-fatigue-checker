@@ -46,6 +46,9 @@ struct PhotoCheckView: View {
     // 缺陷处置地图 sheet（RQMS 思路：沿焊缝归集 + 处置判定）
     @State private var showDisposition: Bool = false
 
+    // 缺陷列表收回开关：识别缺陷太多时收起整张列表，省篇幅（照片标注的独立开关见 AnnotationPhotoView）
+    @State private var imperfectionsCollapsed: Bool = false
+
     // 诊断：模型实际看到的送检输入图（ROI 聚焦=裁剪+letterbox+CLAHE 后），点按放大核查
     @State private var mlInputSnapshot: UIImage? = nil
     @State private var showInputSnapshot: Bool = false
@@ -596,8 +599,24 @@ struct PhotoCheckView: View {
                             }))
                     }
 
-                    // 缺陷列表
-                    SectionTitle(text: "表面缺陷（ISO 5817）", systemImage: "exclamationmark.triangle")
+                    // 缺陷列表（可收回：识别缺陷太多时收起整张列表，省篇幅）
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) { imperfectionsCollapsed.toggle() }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle")
+                            Text("表面缺陷（ISO 5817）").font(.headline)
+                            Spacer()
+                            Text("\(store.vision.imperfections.count) 处")
+                                .font(.caption).foregroundStyle(Theme.textSecondary)
+                            Image(systemName: imperfectionsCollapsed ? "chevron.down" : "chevron.up")
+                                .foregroundStyle(Theme.cyan)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.textPrimary)
+
+                    if !imperfectionsCollapsed {
                     ForEach(Array(store.vision.imperfections.enumerated()), id: \.offset) { i, imp in
                         ImperfectionRow(
                             index: i,
@@ -627,6 +646,7 @@ struct PhotoCheckView: View {
                     Button { store.addImperfection() } label: { Label("+ 添加缺陷", systemImage: "plus") }
                         .font(.caption)
                         .accessibilityLabel("手动添加新缺陷")
+                    }   // end if !imperfectionsCollapsed
 
                     // LiDAR 设备能力提示
                     LiDARCapabilityHint()
@@ -1108,6 +1128,8 @@ struct AnnotationPhotoView: View {
     var fullRefBoxes: [DetectedDefect] = []
     @State private var roiDragStart: CGPoint? = nil
     @State private var roiDragCurrent: CGPoint? = nil
+    /// 标注收回开关：缺陷太多时收起照片上的全部 bbox/蒙皮/标签，露出干净焊缝图，省篇幅
+    @State private var annotationsCollapsed: Bool = false
     @State private var roiHint: String = ""   // 框选方向/多选反馈
 
     /// 短暂提示：2.5 秒后若未被新提示覆盖则自动清除
@@ -1130,6 +1152,8 @@ struct AnnotationPhotoView: View {
                     .frame(width: size.width, height: size.height)
 
                 // 自动识别框（橙色描边 + DimeVision 风格红色蒙皮）：bbox + 类型 + 尺寸
+                // 标注收回：缺陷多时整体收起，露出干净焊缝图（标定/焊缝 ROI 框不受影响）
+                if !annotationsCollapsed {
                 ForEach(Array(imperfections.enumerated()), id: \.offset) { i, imp in
                     if let bbox = imp.bbox {
                         let bx = rect.minX + bbox.minX * rect.width
@@ -1188,6 +1212,7 @@ struct AnnotationPhotoView: View {
                             .position(x: x, y: y)
                     }
                 }
+                }   // end if !annotationsCollapsed
 
                 // 标定叠层（蓝色）：两点 + 连线 + 长度
                 ForEach(Array(calPts.enumerated()), id: \.offset) { _, p in
@@ -1330,6 +1355,26 @@ struct AnnotationPhotoView: View {
                         .padding(8)
                         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
                         .padding(.top, 8)
+                }
+            }
+            // 标注收回箭头：缺陷多时一键收起照片上的全部标注，露出干净焊缝图
+            .overlay(alignment: .topTrailing) {
+                if !imperfections.isEmpty {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) { annotationsCollapsed.toggle() }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: annotationsCollapsed ? "chevron.down" : "chevron.up")
+                            Text(annotationsCollapsed ? "展开标注 (\(imperfections.count))" : "收回标注")
+                        }
+                        .font(.caption.bold())
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 9).padding(.vertical, 5)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .overlay(Capsule().stroke(Color.white.opacity(0.25), lineWidth: 1))
+                    }
+                    .accessibilityLabel(annotationsCollapsed ? "展开缺陷标注" : "收回缺陷标注")
+                    .padding(8)
                 }
             }
         }
