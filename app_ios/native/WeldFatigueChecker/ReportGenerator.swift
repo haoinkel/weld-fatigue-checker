@@ -2,6 +2,7 @@
 // 评估报告导出：PDF（UIGraphicsPDFRenderer，多页）+ Word（HTML .doc，Word/Pages 均可打开）
 // iPad 端侧离线生成；导出写入临时文件并返回文件 URL（带文件名，系统分享/预览才正确）。
 import UIKit
+import CoreImage
 
 enum ReportGenerator {
 
@@ -9,11 +10,13 @@ enum ReportGenerator {
 
     /// 生成 PDF 并写入临时文件，返回可分享的文件 URL
     /// photo/imperfections：外观检查照片与缺陷标注（非空时在报告中附「含标注照片」页）
+    /// welder：焊工档案（非空时在报告尾部署名并生成二维码，现场扫码核验）
     static func exportPDF(_ r: AssessmentResult,
                           photo: UIImage? = nil,
                           imperfections: [ImperfectionInput] = [],
+                          welder: WelderProfile? = nil,
                           fileName: String = "焊缝疲劳评估报告.pdf") -> URL? {
-        let data = buildPDF(r, photo: photo, imperfections: imperfections)
+        let data = buildPDF(r, photo: photo, imperfections: imperfections, welder: welder)
         return writeTemp(data: data, fileName: fileName)
     }
 
@@ -21,8 +24,9 @@ enum ReportGenerator {
     static func exportWord(_ r: AssessmentResult,
                            photo: UIImage? = nil,
                            imperfections: [ImperfectionInput] = [],
+                           welder: WelderProfile? = nil,
                            fileName: String = "焊缝疲劳评估报告.doc") -> URL? {
-        let html = buildWordHTML(r, photo: photo, imperfections: imperfections)
+        let html = buildWordHTML(r, photo: photo, imperfections: imperfections, welder: welder)
         guard let data = html.data(using: .utf8) else { return nil }
         return writeTemp(data: data, fileName: fileName)
     }
@@ -31,7 +35,8 @@ enum ReportGenerator {
 
     static func buildPDF(_ r: AssessmentResult,
                          photo: UIImage? = nil,
-                         imperfections: [ImperfectionInput] = []) -> Data {
+                         imperfections: [ImperfectionInput] = [],
+                         welder: WelderProfile? = nil) -> Data {
         let fmt = UIGraphicsPDFRendererFormat()
         let page = CGRect(x: 0, y: 0, width: 595, height: 842) // A4 @72dpi
         let renderer = UIGraphicsPDFRenderer(bounds: page, format: fmt)
@@ -115,6 +120,24 @@ enum ReportGenerator {
                 line("[\(p.priority)] \(p.ruleId) \(p.title): \(p.action) \(tgt)", 10)
             }
             line("")
+            // 焊工档案 + 二维码（WeldersHub 思路：报告署名 + 现场扫码核验）
+            if let w = welder, !(w.name.isEmpty && w.certNo.isEmpty) {
+                line("")
+                line("【④ 施焊焊工】", 13, bold: true)
+                if !w.name.isEmpty { line("姓名: \(w.name)") }
+                if !w.certNo.isEmpty { line("证书编号: \(w.certNo)") }
+                if !w.level.isEmpty { line("资质等级: \(w.level)") }
+                line("评定标准: \(w.standard)")
+                if let e = w.expiry { line("有效期至: \(WelderProfile.dateFmt.string(from: e))") }
+                if let qr = Self.qrImage(w.qrPayload, size: 150) {
+                    let qs: CGFloat = 150
+                    if y + qs > page.height - 40 { ctx.beginPage(); y = 40 }
+                    qr.draw(in: CGRect(x: left, y: y, width: qs, height: qs))
+                    y += qs + 6
+                    line("（扫码查看焊工档案）", 9, color: .systemGray)
+                }
+            }
+
             line("⚠ \(r.disclaimer)", 9, color: .systemGray)
         }
     }
@@ -123,7 +146,8 @@ enum ReportGenerator {
 
     static func buildWordHTML(_ r: AssessmentResult,
                                photo: UIImage? = nil,
-                               imperfections: [ImperfectionInput] = []) -> String {
+                               imperfections: [ImperfectionInput] = [],
+                               welder: WelderProfile? = nil) -> String {
         var s = """
         <html><head><meta charset="utf-8"><title>焊缝疲劳合规检查报告</title>
         <style>
@@ -195,10 +219,43 @@ enum ReportGenerator {
         }
         s += """
         </table>
+        """
+
+        // 焊工档案 + 二维码（WeldersHub 思路）
+        if let w = welder, !(w.name.isEmpty && w.certNo.isEmpty) {
+            s += "<h2>六、④ 施焊焊工</h2><table>"
+            if !w.name.isEmpty { s += "<tr><td>姓名</td><td>\(escape(w.name))</td></tr>" }
+            if !w.certNo.isEmpty { s += "<tr><td>证书编号</td><td>\(escape(w.certNo))</td></tr>" }
+            if !w.level.isEmpty { s += "<tr><td>资质等级</td><td>\(escape(w.level))</td></tr>" }
+            s += "<tr><td>评定标准</td><td>\(escape(w.standard))</td></tr>"
+            if let e = w.expiry { s += "<tr><td>有效期至</td><td>\(WelderProfile.dateFmt.string(from: e))</td></tr>" }
+            s += "</table>"
+            if let qr = Self.qrImage(w.qrPayload, size: 200),
+               let jpeg = qr.jpegData(compressionQuality: 0.9) {
+                s += "<p><img src=\"data:image/jpeg;base64,\(jpeg.base64EncodedString())\" style=\"width:200px;height:200px;\"/><br><span class=\"note\">扫码查看焊工档案</span></p>"
+            }
+        }
+
+        s += """
         <p class="note">⚠ \(escape(r.disclaimer))</p>
         </body></html>
         """
         return s
+    }
+
+    // MARK: - 二维码生成（CoreImage QRCodeGenerator，端侧离线）
+
+    /// 由文本生成二维码 UIImage（用于 PDF 绘制 / Word 内嵌）
+    static func qrImage(_ text: String, size: CGFloat = 150) -> UIImage? {
+        guard let filter = CIFilter(name: "CIQRCodeGenerator") else { return nil }
+        filter.setValue(Data(text.utf8), forKey: "inputMessage")
+        filter.setValue("M", forKey: "inputCorrectionLevel")
+        guard let ci = filter.outputImage else { return nil }
+        let scale = size / ci.extent.width
+        let scaled = ci.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        let ctx = CIContext()
+        guard let cg = ctx.createCGImage(scaled, from: scaled.extent) else { return nil }
+        return UIImage(cgImage: cg)
     }
 
     // MARK: - 工具

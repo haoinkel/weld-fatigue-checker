@@ -187,14 +187,14 @@ struct ResultView: View {
 
             HStack(spacing: 12) {
                 Button {
-                    if let url = ReportGenerator.exportPDF(result) {
+                    if let url = ReportGenerator.exportPDF(result, welder: store.params.welder) {
                         shareURL = url; exportError = nil; showShare = true
                     } else { exportError = "PDF 导出失败，请重试" }
                 } label: { Label("导出 PDF", systemImage: "square.and.arrow.up") }
                     .buttonStyle(TechButtonStyle(filled: false))
 
                 Button {
-                    if let url = ReportGenerator.exportWord(result) {
+                    if let url = ReportGenerator.exportWord(result, welder: store.params.welder) {
                         shareURL = url; exportError = nil; showShare = true
                     } else { exportError = "Word 导出失败，请重试" }
                 } label: { Label("导出 Word", systemImage: "doc.badge.arrow.up") }
