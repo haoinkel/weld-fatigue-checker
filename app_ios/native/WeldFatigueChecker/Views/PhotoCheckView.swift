@@ -1151,7 +1151,7 @@ struct AnnotationPhotoView: View {
                     .scaledToFit()
                     .frame(width: size.width, height: size.height)
 
-                // 自动识别框（橙色描边 + DimeVision 风格红色蒙皮）：bbox + 类型 + 尺寸
+                // 自动识别框（红色椭圆/胶囊蒙皮 + 细描边 + DimeVision 式标注）：bbox + 类型 + 尺寸
                 // 标注收回：缺陷多时整体收起，露出干净焊缝图（标定/焊缝 ROI 框不受影响）
                 if !annotationsCollapsed {
                 ForEach(Array(imperfections.enumerated()), id: \.offset) { i, imp in
@@ -1160,38 +1160,46 @@ struct AnnotationPhotoView: View {
                         let by = rect.minY + bbox.minY * rect.height
                         let bw = bbox.width * rect.width
                         let bh = bbox.height * rect.height
-                        // ① 蒙皮高亮：果冻状半透明覆层（渐变填充 + 软边发光），缺陷一眼可见
-                        let cr = min(bw, bh) * 0.28
-                        RoundedRectangle(cornerRadius: cr)
-                            .fill(LinearGradient(colors: [Color.red.opacity(0.55), Color.red.opacity(0.25)],
+                        // ① 蒙皮高亮：形状随缺陷 bbox 长宽比自适应（线状缺陷→胶囊，近方形→椭圆），
+                        //    红色半透明 + 软边发光，紧贴缺陷而非固定矩形
+                        let isElongated = max(bw, bh) > min(bw, bh) * 1.7
+                        let skinShape: AnyShape = isElongated ? AnyShape(Capsule()) : AnyShape(Ellipse())
+                        skinShape
+                            .fill(LinearGradient(colors: [Color.red.opacity(0.50), Color.red.opacity(0.22)],
                                                  startPoint: .top, endPoint: .bottom))
                             .background(
-                                RoundedRectangle(cornerRadius: cr * 1.6)
-                                    .fill(Color.red.opacity(0.35))
-                                    .blur(radius: max(4, cr * 0.8))
-                            )
-                            .overlay(
-                                // 蒙皮上沿高光线，增强"覆层"质感
-                                Path { p in
-                                    p.move(to: CGPoint(x: bx + bw * 0.18, y: by + bh * 0.12))
-                                    p.addQuadCurve(to: CGPoint(x: bx + bw * 0.82, y: by + bh * 0.12),
-                                                   control: CGPoint(x: bx + bw / 2, y: by + bh * 0.02))
-                                }
-                                .stroke(Color.white.opacity(0.5), style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                                skinShape
+                                    .fill(Color.red.opacity(0.28))
+                                    .blur(radius: max(3, min(bw, bh) * 0.35))
                             )
                             .frame(width: bw, height: bh)
                             .position(x: bx + bw / 2, y: by + bh / 2)
-                        // ② 编号标签 → 缺陷引线（DimeVision 式标注锚点）
-                        let labelY = max(rect.minY + 12, by - 10)
-                        Path { p in
-                            p.move(to: CGPoint(x: bx + bw / 2, y: labelY + 9))
-                            p.addLine(to: CGPoint(x: bx + bw / 2, y: by + 2))
+                        // ② 缺陷外描边：细线（1.2pt）随形状走，替代原来过宽的矩形框
+                        skinShape
+                            .stroke(Theme.defect.opacity(0.9), style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
+                            .frame(width: bw, height: bh)
+                            .position(x: bx + bw / 2, y: by + bh / 2)
+                        // ③ 编号标签 + 引线：默认置于缺陷正上方中心；顶部空间不足则翻到下方
+                        let labelH: CGFloat = 20
+                        let gap: CGFloat = 6
+                        let wantAbove = (by - gap - labelH) >= rect.minY
+                        let labelCenterY: CGFloat
+                        let lineTop: CGFloat
+                        let lineBot: CGFloat
+                        if wantAbove {
+                            labelCenterY = by - gap - labelH / 2
+                            lineTop = by - gap          // 标签底边
+                            lineBot = by                // bbox 顶
+                        } else {
+                            labelCenterY = min(by + bh + gap + labelH / 2, rect.maxY - labelH / 2)
+                            lineTop = by + bh           // bbox 底
+                            lineBot = by + bh + gap     // 标签顶
                         }
-                        .stroke(Theme.defect, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
-                        Rectangle()
-                            .stroke(Theme.defect, lineWidth: 2)
-                            .frame(width: bw, height: bh)
-                            .position(x: bx + bw / 2, y: by + bh / 2)
+                        Path { p in
+                            p.move(to: CGPoint(x: bx + bw / 2, y: lineTop))
+                            p.addLine(to: CGPoint(x: bx + bw / 2, y: lineBot))
+                        }
+                        .stroke(Theme.defect, style: StrokeStyle(lineWidth: 1, lineCap: .round))
                         let longPx = imp.pixelSize.map { defectMeasurePx(type: imp.type, pixelSize: $0) } ?? 0
                         let sizeTxt = imp.sizeMm != nil
                             ? String(format: "%.1f mm", imp.sizeMm!)
@@ -1203,7 +1211,7 @@ struct AnnotationPhotoView: View {
                             .foregroundStyle(.white)
                             .padding(.horizontal, 5).padding(.vertical, 2)
                             .background(Theme.defect.opacity(0.9), in: RoundedRectangle(cornerRadius: 5))
-                            .position(x: bx + bw / 2, y: labelY)
+                            .position(x: bx + bw / 2, y: labelCenterY)
                     } else if let loc = imp.location {
                         // 手动定位点（红）
                         let x = rect.minX + loc.x * rect.width
