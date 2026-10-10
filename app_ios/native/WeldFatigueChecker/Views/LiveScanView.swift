@@ -103,6 +103,17 @@ struct LiveScanView: View {
                     Text(cs).font(.caption2)
                         .foregroundStyle(cs.contains("不可用") ? .red : .cyan)
                 }
+                // 实时处置徽标（RQMS 思路：合格/观察）
+                let dispCount = scanner.detections.count
+                let disp: Disposition = dispCount == 0 ? .accept : .monitor
+                HStack(spacing: 5) {
+                    Circle().fill(disp.color).frame(width: 10, height: 10)
+                    Text(dispCount == 0 ? "处置：合格" : "处置：观察（\(dispCount)）")
+                        .font(.caption2.bold())
+                        .foregroundStyle(disp.color)
+                }
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .background(disp.color.opacity(0.16), in: RoundedRectangle(cornerRadius: 6))
             }
             Spacer()
             Color.clear.frame(width: 64, height: 30)   // 与退出按钮等宽占位，标题保持居中
