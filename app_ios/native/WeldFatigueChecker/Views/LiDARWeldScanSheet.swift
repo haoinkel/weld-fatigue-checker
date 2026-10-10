@@ -426,27 +426,63 @@ struct LiDARWeldScanSheet: View {
                        let depthData = frame.capturedDepthData {
                         let depthPB = WeldScanCoordinator.depthMapMeters(depthData)
                         let intr = frame.camera.intrinsics
-                        let photoDets = MLDefectDetector.detect(in: ui, maxCount: 16,
-                                                               roi: store.vision.weldSeamROIs.first,
-                                                               depth: depthPB, intrinsics: intr)
-                        for d in photoDets {
-                            let mm = d.metric.map { $0.primaryMm(type: d.type) }
-                            store.vision.imperfections.append(
-                                ImperfectionInput(type: d.type, sizeMm: mm, poreMm: nil,
-                                                  location: CGPoint(x: d.rect.midX, y: d.rect.midY),
-                                                  bbox: d.rect, pixelSize: d.pixelSize))
-                        }
-                        // 优化点 F：彩色帧融合缺陷按真实世界坐标钉在工件表面（AR 叠加）
-                        for d in photoDets {
-                            let c = CGPoint(x: d.rect.midX, y: d.rect.midY)
-                            if let wp = WeldScanCoordinator.worldPoint(normalized: c, depth: depthPB, frame: frame) {
-                                let mm = d.metric.map { $0.primaryMm(type: d.type) } ?? 0
-                                let lbl = "\(d.type) \(String(format: "%.1f", mm))mm"
-                                WeldScanCoordinator.shared.addDefectAnchor(world: wp, label: lbl, color: .systemYellow)
+                        let mode = DetectionEngineMode(rawValue: store.params.engineMode) ?? .local
+                        if mode == .local {
+                            // 现有本地深度感知检测（保留 LiDAR 真尺度 mm）
+                            let photoDets = MLDefectDetector.detect(in: ui, maxCount: 16,
+                                                                   roi: store.vision.weldSeamROIs.first,
+                                                                   depth: depthPB, intrinsics: intr)
+                            for d in photoDets {
+                                let mm = d.metric.map { $0.primaryMm(type: d.type) }
+                                store.vision.imperfections.append(
+                                    ImperfectionInput(type: d.type, sizeMm: mm, poreMm: nil,
+                                                      location: CGPoint(x: d.rect.midX, y: d.rect.midY),
+                                                      bbox: d.rect, pixelSize: d.pixelSize))
                             }
-                        }
-                        if !photoDets.isEmpty {
-                            autoScaledNote += "\n（LiDAR 融合：彩色帧缺陷已识别并深度反投影得 mm，共 \(photoDets.count) 项）"
+                            // 优化点 F：彩色帧融合缺陷按真实世界坐标钉在工件表面（AR 叠加）
+                            for d in photoDets {
+                                let c = CGPoint(x: d.rect.midX, y: d.rect.midY)
+                                if let wp = WeldScanCoordinator.worldPoint(normalized: c, depth: depthPB, frame: frame) {
+                                    let mm = d.metric.map { $0.primaryMm(type: d.type) } ?? 0
+                                    let lbl = "\(d.type) \(String(format: "%.1f", mm))mm"
+                                    WeldScanCoordinator.shared.addDefectAnchor(world: wp, label: lbl, color: .systemYellow)
+                                }
+                            }
+                            if !photoDets.isEmpty {
+                                autoScaledNote += "\n（LiDAR 融合：彩色帧缺陷已识别并深度反投影得 mm，共 \(photoDets.count) 项）"
+                            }
+                        } else {
+                            // 云端 / 自动：经 DetectionRouter 获取类别+bbox（无网自动回落端侧），
+                            // 仍用 LiDAR 深度反投影定位钉 AR 锚点；mm 取云端 estSizeMm（模型估算，非 LiDAR 真尺度）
+                            let rois = store.vision.weldSeamROIs.isEmpty
+                                ? [CGRect(x: 0, y: 0, width: 1, height: 1)]
+                                : store.vision.weldSeamROIs
+                            let capUI = ui, capDepth = depthPB, capFrame = frame
+                            Task {
+                                let (cd, src, note) = await DetectionRouter.detect(in: capUI, rois: rois, mode: mode)
+                                DispatchQueue.main.async {
+                                    for d in cd {
+                                        let mm = d.metric.map { $0.primaryMm(type: d.type) }
+                                        store.vision.imperfections.append(
+                                            ImperfectionInput(type: d.type, sizeMm: mm, poreMm: nil,
+                                                              location: CGPoint(x: d.rect.midX, y: d.rect.midY),
+                                                              bbox: d.rect, pixelSize: d.pixelSize))
+                                    }
+                                    for d in cd {
+                                        let c = CGPoint(x: d.rect.midX, y: d.rect.midY)
+                                        if let wp = WeldScanCoordinator.worldPoint(normalized: c, depth: capDepth, frame: capFrame) {
+                                            let mm = d.metric.map { $0.primaryMm(type: d.type) } ?? 0
+                                            let lbl = "\(d.type) \(String(format: "%.1f", mm))mm"
+                                            WeldScanCoordinator.shared.addDefectAnchor(world: wp, label: lbl, color: .systemYellow)
+                                        }
+                                    }
+                                    if !cd.isEmpty {
+                                        summary += "\n（\(src) 融合：彩色帧缺陷已识别并深度反投影，共 \(cd.count) 项）"
+                                    } else if src == "local(fallback)" {
+                                        summary += "\n（云端不可用，已自动回落端侧）"
+                                    }
+                                }
+                            }
                         }
                     }
                 // 优化点 F：深度剖面候选也锚定在扫描中线附近（不依赖彩色帧）

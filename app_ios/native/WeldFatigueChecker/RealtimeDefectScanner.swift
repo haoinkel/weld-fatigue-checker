@@ -44,6 +44,14 @@ final class RealtimeDefectScanner: NSObject, ObservableObject,
     /// 为空时不检测任何缺陷（避免扫描非焊缝物体误报余高等）；非空时只保留中心落在
     /// 任一区域内的缺陷（多处框选 = 多条焊缝分别检出）。
     @Published var rois: [CGRect] = []
+    /// 检测引擎模式（与照片页同源：local/cloud/auto）；由 LiveScanView 同步 store.params.engineMode
+    @Published var engineMode: DetectionEngineMode = .local
+    /// 云端识别结果（与端侧实时预览分离展示；cloud 模式作为权威框）
+    @Published var cloudDetections: [DetectedDefect] = []
+    @Published var cloudStatus: String? = nil
+    /// 云端补检节流间隔（秒）：实时逐帧跑云端太慢且烧额度，约每 2.5s 送检一帧
+    private var lastCloudTime: CFTimeInterval = 0
+    private let cloudInterval: CFTimeInterval = 2.5
 
     // MARK: - 参数
     /// 单帧检测节流间隔（秒）：约 6.7 fps，足够实时预览且省电。
@@ -84,6 +92,8 @@ final class RealtimeDefectScanner: NSObject, ObservableObject,
         DispatchQueue.main.async {
             self.isRunning = false
             self.detections = []
+            self.cloudDetections = []
+            self.cloudStatus = nil
         }
         started = false
     }
@@ -165,6 +175,8 @@ final class RealtimeDefectScanner: NSObject, ObservableObject,
         guard !rois.isEmpty else {
             DispatchQueue.main.async {
                 self.detections = []
+                self.cloudDetections = []
+                self.cloudStatus = nil
             }
             return
         }
@@ -177,8 +189,31 @@ final class RealtimeDefectScanner: NSObject, ObservableObject,
             return rois.contains { $0.contains(c) }
         }
 
-        DispatchQueue.main.async {
-            self.detections = dets
+        // 云端引擎（与照片页同模式）：local 仍实时预览；cloud/auto 节流向云端补检/主检
+        let mode = self.engineMode
+        if mode == .local {
+            DispatchQueue.main.async { self.detections = dets }
+        } else {
+            DispatchQueue.main.async { self.detections = dets }   // 端侧实时预览不中断
+            let cloudDue = now - self.lastCloudTime >= self.cloudInterval
+            if cloudDue {
+                self.lastCloudTime = now
+                let roisCopy = self.rois
+                Task {
+                    let (cd, src, note) = await DetectionRouter.detect(in: ui, rois: roisCopy, mode: mode)
+                    DispatchQueue.main.async {
+                        self.cloudDetections = cd
+                        if src == "local(fallback)" {
+                            self.cloudStatus = "云端不可用（\(note)），已回落端侧"
+                        } else if cd.isEmpty {
+                            self.cloudStatus = "云端未检出缺陷"
+                        } else {
+                            self.cloudStatus = "云端识别 \(cd.count) 处（\(src)）"
+                        }
+                        if mode == .cloud { self.detections = cd }   // 云端模式：云端结果为权威框
+                    }
+                }
+            }
         }
     }
 

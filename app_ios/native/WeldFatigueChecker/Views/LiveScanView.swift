@@ -58,6 +58,8 @@ struct LiveScanView: View {
             scanner.start()
             // 沿用之前已框选的焊缝区域（若用户已在照片或上次扫描中框选过）
             scanner.rois = store.vision.weldSeamROIs
+            // 同步检测引擎模式（端侧/云端/自动，与照片页同源）
+            scanner.engineMode = DetectionEngineMode(rawValue: store.params.engineMode) ?? .local
         }
         .onDisappear { scanner.stop() }
         // 防御：首帧到达后再同步一次 roi，避免 onAppear 早于 store 就绪导致框选框不显示
@@ -65,6 +67,10 @@ struct LiveScanView: View {
             if newImg != nil, scanner.rois.isEmpty, !store.vision.weldSeamROIs.isEmpty {
                 scanner.rois = store.vision.weldSeamROIs
             }
+        }
+        // 照片页切换引擎模式时，实时扫描同步（云端/自动才走云端补检）
+        .onChange(of: store.params.engineMode) { _, newMode in
+            scanner.engineMode = DetectionEngineMode(rawValue: newMode) ?? .local
         }
     }
 
@@ -92,6 +98,10 @@ struct LiveScanView: View {
                 if !scanner.rois.isEmpty {
                     Text("已框选 \(scanner.rois.count) 处焊缝")
                         .font(.caption2).foregroundStyle(.yellow)
+                }
+                if scanner.engineMode != .local, let cs = scanner.cloudStatus {
+                    Text(cs).font(.caption2)
+                        .foregroundStyle(cs.contains("不可用") ? .red : .cyan)
                 }
             }
             Spacer()
@@ -176,8 +186,10 @@ struct LiveScanView: View {
                     }
                 }
 
-                // 实时缺陷框（仅在 roi 内）
-                ForEach(Array(scanner.detections.enumerated()), id: \.offset) { _, d in
+                // 实时缺陷框（仅在 roi 内）；云端模式以云端结果为权威框
+                let disp = (scanner.engineMode == .cloud && !scanner.cloudDetections.isEmpty)
+                    ? scanner.cloudDetections : scanner.detections
+                ForEach(Array(disp.enumerated()), id: \.offset) { _, d in
                     let bx = offX + d.rect.minX * iwP
                     let by = offY + d.rect.minY * ihP
                     let bw = d.rect.width * iwP
