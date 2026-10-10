@@ -3,6 +3,79 @@
 // 与 weld_fatigue_checker/engine/* 同源移植（EN 1993-1-9 + ISO 5817）
 
 import Foundation
+import SwiftUI
+
+// MARK: - 焊工档案（WeldersHub 思路：焊工身份 + 资质 + 报告二维码）
+
+/// 焊工资质档案：用于报告署名与现场二维码核验（EN 1090 可追溯要求）
+struct WelderProfile {
+    var name: String = ""          // 焊工姓名
+    var certNo: String = ""        // 资质证书编号
+    var level: String = ""         // 资质等级（如 ISO 9606 II / ASME 6G）
+    var standard: String = "ISO 9606-1"   // 评定标准
+    var expiry: Date? = nil        // 证书有效期（用于到期提醒）
+    var company: String = ""       // 所属单位（可选）
+
+    /// 资质是否临近到期（≤30 天）或已过期
+    var certExpiryStatus: (state: String, daysLeft: Int?) {
+        guard let e = expiry else { return ("未填有效期", nil) }
+        let days = Calendar.current.dateComponents([.day], from: Date(), to: e).day ?? 0
+        if days < 0 { return ("已过期", days) }
+        if days <= 30 { return ("即将到期", days) }
+        return ("有效", days)
+    }
+
+    /// 二维码承载的文本（扫码即看档案摘要）
+    var qrPayload: String {
+        var s = "焊工档案\n"
+        s += "姓名: \(name.isEmpty ? "—" : name)\n"
+        s += "证书号: \(certNo.isEmpty ? "—" : certNo)\n"
+        s += "等级: \(level.isEmpty ? "—" : level)\n"
+        s += "标准: \(standard)\n"
+        if let e = expiry { s += "有效期至: \(Self.dateFmt.string(from: e))\n" }
+        return s
+    }
+
+    static let dateFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f
+    }()
+}
+
+// MARK: - 缺陷处置态（RQMS 思路：沿焊缝归集 + 处置判定）
+
+enum Disposition: String, CaseIterable {
+    case accept   // 合格
+    case monitor  // 观察（未评级/待复核）
+    case rework   // 需返修
+    case reject   // 不合格/拒收
+
+    var label: String {
+        switch self {
+        case .accept: return "合格"
+        case .monitor: return "观察"
+        case .rework: return "返修"
+        case .reject: return "拒收"
+        }
+    }
+
+    /// SwiftUI 用色（与 Theme 语义一致：绿/橙/红）
+    var color: Color {
+        switch self {
+        case .accept: return Color(red: 0.255, green: 0.906, blue: 0.557)
+        case .monitor: return Color(red: 1.0, green: 0.718, blue: 0.224)
+        case .rework: return Color(red: 1.0, green: 0.55, blue: 0.2)
+        case .reject: return Color(red: 1.0, green: 0.365, blue: 0.396)
+        }
+    }
+}
+
+extension ImperfectionInput {
+    /// 由 ISO5817 判定推导处置态
+    var disposition: Disposition {
+        if let a = accepted { return a ? .accept : .rework }
+        return .monitor
+    }
+}
 
 // MARK: - 3D 设计输入
 struct DesignInput {
@@ -69,6 +142,7 @@ struct UserParams {
     var engineMode: String = "local"  // local|cloud|auto（双引擎并行：端侧/云端，云端无网自动回落端侧）
     var thickness: Double = 12
     var weldWidthMm: Double = 24      // 余高/凸度计算基准宽度 b（ISO 5817 余高限值 h≤v·b+add）；缺省 2t
+    var welder: WelderProfile = WelderProfile()   // 焊工档案（报告署名 + 二维码）
 }
 
 // MARK: - 结果结构
